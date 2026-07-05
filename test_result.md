@@ -101,3 +101,240 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Rebuild Dispatchr — a home-services marketplace — with all 4 roles (Customer, Service Provider, Property Manager, Insurance), full stack, modern refresh design, JWT + Emergent Google OAuth, Leaflet Live Map."
+
+backend:
+  - task: "Auth: register, login, /me, logout (JWT + session cookie)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "JWT signup/login verified via manual curl and browser signup. Session cookie handled for Google OAuth."
+        - working: true
+          agent: "testing"
+          comment: "Comprehensive testing completed. All auth endpoints working: register (returns user+token), duplicate register returns 400, login with correct credentials works, wrong password returns 401, GET /auth/me returns user data correctly. Tested with 2 users (customer and provider)."
+  - task: "Emergent Google OAuth session exchange"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "POST /api/auth/session exchanges session_id via demobackend, sets httpOnly cookie."
+        - working: "NA"
+          agent: "testing"
+          comment: "Not tested - Google OAuth requires browser-based flow with actual Google authentication. Endpoint implementation verified in code review. Manual testing required."
+  - task: "Jobs CRUD + Bids + Accept -> Booking"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Endpoints /api/jobs, /api/jobs/mine, /api/jobs/board, /api/jobs/{id}, /api/bids, /api/bids/{id}/accept implemented."
+        - working: true
+          agent: "testing"
+          comment: "Full workflow tested successfully: Customer A created job (plumbing, budget 100-300), job appears in /jobs/mine and /jobs/board, Provider B created bid (amount 200, eta 2 days), bid appears in /bids/mine, Customer A accepted bid which created booking automatically. All endpoints working correctly."
+  - task: "Bookings status pipeline"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "POST /api/bookings, GET /api/bookings/mine, PATCH /api/bookings/{id}/status."
+        - working: true
+          agent: "testing"
+          comment: "Status pipeline tested through all stages: booked -> en_route -> working -> done -> paid. GET /bookings/mine works for both customer and provider, showing same booking. All status transitions successful."
+  - task: "Messages: threads + send"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "POST /api/threads, GET /api/threads, GET /api/threads/{id}/messages, POST /api/messages."
+        - working: false
+          agent: "testing"
+          comment: "CRITICAL BUG FOUND: POST /api/threads returned 500 error due to MongoDB ObjectId serialization issue. Thread creation was inserting document but returning with _id field that FastAPI cannot serialize."
+        - working: true
+          agent: "testing"
+          comment: "BUG FIXED: Added thr.pop('_id', None) after insert_one in create_thread endpoint and msg_dict.pop('_id', None) in send_message endpoint. All message endpoints now working: thread creation with initial message, GET /threads, GET /threads/{id}/messages, POST /messages all pass."
+  - task: "Marketplace: products, orders"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "20 seeded products across categories, /api/products, /api/orders."
+        - working: true
+          agent: "testing"
+          comment: "All marketplace endpoints working: GET /products returns 20+ seeded products, category filter (Heating & Cooling) works correctly, search query (?q=heat) returns matching products, GET /products/p001 returns single product, POST /orders correctly computes total ($4998 for 2x Mitsubishi heat pumps @ $2499 each), GET /orders/mine returns order history."
+  - task: "Feed posts (list, create, like)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "GET/POST /api/feed, POST /api/feed/{id}/like. 6 seeded posts."
+        - working: true
+          agent: "testing"
+          comment: "Feed endpoints working: GET /feed returns 6+ seeded posts, post_type filter (?post_type=sale) works correctly, Provider B successfully created new post (news type with tags), like toggle works correctly returning likes count and liked status."
+  - task: "Properties (portfolio)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "CRUD on /api/properties."
+        - working: true
+          agent: "testing"
+          comment: "Property CRUD working: POST /properties created property (1 Test Rd, Auckland, residential, 3 bedrooms), GET /properties/mine returns property list, DELETE /properties/{id} successfully deletes property."
+  - task: "Provider profiles + nearby (live map)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "9 seeded demo providers with lat/lng around Auckland."
+        - working: true
+          agent: "testing"
+          comment: "Provider endpoints working: GET /providers/nearby returns 9+ seeded providers all with latitude/longitude coordinates, category filter (?category=plumbing) works correctly, GET /providers/me returns provider profile, PATCH /providers/me successfully updates online status and hourly_rate."
+  - task: "Stats endpoints for customer/provider dashboards"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "/api/stats/customer, /api/stats/provider."
+        - working: true
+          agent: "testing"
+          comment: "Stats endpoints working: GET /stats/customer returns all required fields (total_spent, jobs_done, active_jobs, upcoming, unpaid, avg_cost), GET /stats/provider returns all required fields (earnings, jobs_done, active_jobs, pending_bids)."
+  - task: "Role switching"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "PATCH /api/auth/role, auto-creates provider profile."
+        - working: true
+          agent: "testing"
+          comment: "Role switching working: PATCH /api/auth/role successfully switches customer to provider role and auto-creates provider profile. Tested switching back to customer role as well."
+
+frontend:
+  - task: "Landing role select + Signup/Login + Google OAuth callback"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Manually verified signup, redirect to /client-home. Google button present."
+  - task: "Client sidebar layout + dashboards for all 4 roles"
+    implemented: true
+    working: true
+    file: "frontend/src/components/layout/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Sidebar shows role-specific nav; TopBar with cart/notif; theme + role switcher work."
+  - task: "Client pages: Home, PostJob, MyJobPosts, JobDetail, Bookings, Messages, Marketplace, ProductDetail, Cart, NewsFeed, Profile, LiveMap (Leaflet)"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/client/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "All pages load. Leaflet map with real Auckland tiles and 9 demo provider pins."
+  - task: "Provider pages: Dashboard, JobBoard, Calendar, Earnings, TradeStore"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/provider/*"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Complete with pricing intelligence, monthly chart, monthly calendar view."
+  - task: "Property + Insurance dashboards"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/property|insurance/*"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "Property portfolio CRUD; Insurance portal with mocked shared portfolio."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: "Dispatchr full-stack MVP complete. Backend: FastAPI+Motor with seed products, providers, feed. Frontend: React + Tailwind + shadcn + Leaflet, 4-role sidebar, ~20 pages. Auth: JWT email/password + Emergent Google OAuth (session cookie flow). Please test all backend endpoints. Demo customer/provider accounts: emails ending in @dispatchr.demo with password demo1234 (created via seed for providers). A fresh signup with role=customer works end-to-end."
+    - agent: "testing"
+      message: "Backend testing complete. Ran 44 comprehensive API tests covering all endpoints. FOUND AND FIXED 1 CRITICAL BUG: Messages endpoints (POST /api/threads, POST /api/messages) had MongoDB ObjectId serialization issue causing 500 errors. Fixed by removing _id field after insert operations. ALL 44 TESTS NOW PASS (100% success rate). All backend functionality verified working: Auth (register, login, /me, role switch), Jobs/Bids/Bookings full workflow, Messages (threads + send), Marketplace (20+ products, orders with correct totals), Feed (6+ posts, filtering, likes), Properties (CRUD), Providers (9+ with lat/lng, filtering), Stats (customer & provider dashboards), Categories (12 objects). Google OAuth session exchange not tested (requires browser flow). Backend is production-ready."
+

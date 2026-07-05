@@ -1,55 +1,117 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import './App.css';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { CartProvider } from './context/CartContext';
+import { Toaster } from './components/ui/sonner';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import LandingRoleSelect from './pages/LandingRoleSelect';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import AuthCallback from './pages/AuthCallback';
+import MainLayout from './components/layout/MainLayout';
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
+import ClientHome from './pages/client/ClientHome';
+import PostJob from './pages/client/PostJob';
+import MyJobPosts from './pages/client/MyJobPosts';
+import Bookings from './pages/client/Bookings';
+import Messages from './pages/client/Messages';
+import Marketplace from './pages/client/Marketplace';
+import ProductDetail from './pages/client/ProductDetail';
+import Cart from './pages/client/Cart';
+import NewsFeed from './pages/client/NewsFeed';
+import Profile from './pages/client/Profile';
+import LiveMap from './pages/client/LiveMap';
+import JobDetail from './pages/client/JobDetail';
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+import ProviderDashboard from './pages/provider/ProviderDashboard';
+import ProviderJobBoard from './pages/provider/ProviderJobBoard';
+import ProviderEarnings from './pages/provider/ProviderEarnings';
+import ProviderCalendar from './pages/provider/ProviderCalendar';
+import ProviderTradeStore from './pages/provider/ProviderTradeStore';
 
+import PropertyDashboard from './pages/property/PropertyDashboard';
+import InsuranceDashboard from './pages/insurance/InsuranceDashboard';
+
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
+  if (!user) return <Navigate to="/" replace />;
+  return children;
+}
+
+function RootRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
+  if (user) {
+    if (user.role === 'provider') return <Navigate to="/provider/dashboard" replace />;
+    if (user.role === 'property') return <Navigate to="/property/dashboard" replace />;
+    if (user.role === 'insurance') return <Navigate to="/insurance/dashboard" replace />;
+    return <Navigate to="/client-home" replace />;
+  }
+  return <LandingRoleSelect />;
+}
+
+function AppRouter() {
+  const location = useLocation();
+  if (location.hash?.includes('session_id=')) {
+    return <AuthCallback />;
+  }
   return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
+    <Routes>
+      <Route path="/" element={<RootRoute />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+
+      <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+        {/* Client routes */}
+        <Route path="/client-home" element={<ClientHome />} />
+        <Route path="/post-job" element={<PostJob />} />
+        <Route path="/my-job-posts" element={<MyJobPosts />} />
+        <Route path="/jobs/:jobId" element={<JobDetail />} />
+        <Route path="/bookings" element={<Bookings />} />
+        <Route path="/messages" element={<Messages />} />
+        <Route path="/marketplace" element={<Marketplace />} />
+        <Route path="/marketplace/product/:id" element={<ProductDetail />} />
+        <Route path="/cart" element={<Cart />} />
+        <Route path="/news-feed" element={<NewsFeed />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/live-map" element={<LiveMap />} />
+
+        {/* Provider */}
+        <Route path="/provider/dashboard" element={<ProviderDashboard />} />
+        <Route path="/provider/job-board" element={<ProviderJobBoard />} />
+        <Route path="/provider/earnings" element={<ProviderEarnings />} />
+        <Route path="/provider/calendar" element={<ProviderCalendar />} />
+        <Route path="/provider/trade-store" element={<ProviderTradeStore />} />
+
+        {/* Property */}
+        <Route path="/property/dashboard" element={<PropertyDashboard />} />
+
+        {/* Insurance */}
+        <Route path="/insurance/dashboard" element={<InsuranceDashboard />} />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
-};
+}
 
 function App() {
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <ThemeProvider>
+      <AuthProvider>
+        <CartProvider>
+          <div className="App">
+            <BrowserRouter>
+              <AppRouter />
+              <Toaster position="top-right" richColors />
+            </BrowserRouter>
+          </div>
+        </CartProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
