@@ -22,7 +22,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
-JWT_SECRET = os.environ.get("JWT_SECRET", "dispatchr-secret-key-change-me")
+JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
 
 client = AsyncIOMotorClient(MONGO_URL)
@@ -538,9 +538,16 @@ async def create_job(payload: JobCreate, user=Depends(require_user)):
 @api.get("/jobs/mine")
 async def my_jobs(user=Depends(require_user)):
     jobs = await db.jobs.find({"client_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
-    # Attach bids count
+    if not jobs:
+        return jobs
+    # Batch fetch all bids for these jobs (avoids N+1)
+    job_ids = [j["job_id"] for j in jobs]
+    all_bids = await db.bids.find({"job_id": {"$in": job_ids}}, {"_id": 0}).to_list(None)
+    bids_by_job = {}
+    for b in all_bids:
+        bids_by_job.setdefault(b["job_id"], []).append(b)
     for j in jobs:
-        bids = await db.bids.find({"job_id": j["job_id"]}, {"_id": 0}).to_list(200)
+        bids = bids_by_job.get(j["job_id"], [])
         j["bids_count"] = len(bids)
         if bids:
             amounts = [b["amount"] for b in bids]
@@ -740,9 +747,14 @@ async def accept_bid(bid_id: str, user=Depends(require_user)):
 @api.get("/bids/mine")
 async def my_bids(user=Depends(require_user)):
     bids = await db.bids.find({"provider_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    if not bids:
+        return bids
+    # Batch fetch all jobs (avoids N+1)
+    job_ids = list({b["job_id"] for b in bids})
+    jobs = await db.jobs.find({"job_id": {"$in": job_ids}}, {"_id": 0}).to_list(None)
+    jobs_map = {j["job_id"]: j for j in jobs}
     for b in bids:
-        job = await db.jobs.find_one({"job_id": b["job_id"]}, {"_id": 0})
-        b["job"] = job
+        b["job"] = jobs_map.get(b["job_id"])
     return bids
 
 
@@ -959,8 +971,14 @@ async def nearby_providers(category: Optional[str] = None):
     if category:
         q["categories"] = category
     profiles = await db.provider_profiles.find(q, {"_id": 0}).to_list(200)
+    if not profiles:
+        return profiles
+    # Batch fetch user records (avoids N+1)
+    user_ids = [p["user_id"] for p in profiles]
+    users = await db.users.find({"user_id": {"$in": user_ids}}, {"_id": 0, "password_hash": 0}).to_list(None)
+    users_map = {u["user_id"]: u for u in users}
     for p in profiles:
-        u = await db.users.find_one({"user_id": p["user_id"]}, {"_id": 0, "password_hash": 0})
+        u = users_map.get(p["user_id"])
         if u:
             p["name"] = u.get("name")
             p["picture"] = u.get("picture")

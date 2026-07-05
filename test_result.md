@@ -403,6 +403,50 @@ backend:
         - working: true
           agent: "testing"
           comment: "Role switching working: PATCH /api/auth/role successfully switches customer to provider role and auto-creates provider profile. Tested switching back to customer role as well."
+  - task: "Deployment Blocker Fix: JWT_SECRET required from env (no fallback)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "REGRESSION TEST PASSED: JWT_SECRET now required from backend/.env with no fallback (line 25: JWT_SECRET = os.environ['JWT_SECRET']). Tested register, login, /auth/me endpoints. Created 2 test users (customer + provider), verified tokens generated correctly, /auth/me returns correct user data, and tokens remain valid across multiple requests. All auth flows working correctly."
+  - task: "Deployment Blocker Fix: /jobs/mine N+1 optimization (bids_count, bids_range)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "REGRESSION TEST PASSED: /jobs/mine N+1 fix verified (lines 538-555). Batch fetches all bids for jobs in single query, groups by job_id, adds bids_count to all jobs. Jobs with bids include bids_range {min, max} with correct values. Test scenario: Customer A created 3 jobs, Provider B bid $150 on job 1 and $250 on job 2. Results: Job 1 has bids_count=1, bids_range={min:150, max:150}. Job 2 has bids_count=1, bids_range={min:250, max:250}. Job 3 has bids_count=0, no bids_range. All values correct."
+  - task: "Deployment Blocker Fix: /bids/mine N+1 optimization (job field populated)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "REGRESSION TEST PASSED: /bids/mine N+1 fix verified (lines 747-758). Batch fetches all jobs for bids in single query, creates jobs_map, populates job field for each bid. Test scenario: Provider B has 2 bids. Results: Both bids have job field populated with complete job object including job_id, title, category, description. All job data correct and properly populated."
+  - task: "Deployment Blocker Fix: /providers/nearby N+1 optimization (name field populated)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "REGRESSION TEST PASSED: /providers/nearby N+1 fix verified (lines 968-985). Batch fetches all user records for providers in single query, creates users_map, populates name and picture fields from linked user records. Test results: Retrieved 18 providers, all 18 have name field populated correctly from user records. Category filter (?category=plumbing) also working correctly, returning 1 plumbing provider with name populated. All provider data correct."
 
 frontend:
   - task: "Landing role select + Signup/Login + Google OAuth callback"
@@ -464,7 +508,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 2
+  test_sequence: 3
   run_ui: false
 
 test_plan:
@@ -482,5 +526,7 @@ agent_communication:
       message: "Backend testing complete. Ran 44 comprehensive API tests covering all endpoints. FOUND AND FIXED 1 CRITICAL BUG: Messages endpoints (POST /api/threads, POST /api/messages) had MongoDB ObjectId serialization issue causing 500 errors. Fixed by removing _id field after insert operations. ALL 44 TESTS NOW PASS (100% success rate). All backend functionality verified working: Auth (register, login, /me, role switch), Jobs/Bids/Bookings full workflow, Messages (threads + send), Marketplace (20+ products, orders with correct totals), Feed (6+ posts, filtering, likes), Properties (CRUD), Providers (9+ with lat/lng, filtering), Stats (customer & provider dashboards), Categories (12 objects). Google OAuth session exchange not tested (requires browser flow). Backend is production-ready."
     - agent: "testing"
       message: "Phase 2 backend testing complete. Ran 32 comprehensive tests on all newly added endpoints with fresh provider + customer accounts. ALL 32 TESTS PASSED (100% success rate). Verified: (1) Enhanced Bids - full payload with line_items, warranty_months, payment_terms, terms, documents; counter-offers create new bid with revision+1 and previous_bid_id; reject/withdraw status changes; comments in chronological order. (2) Quotations - auto-computes subtotal, 15% tax, total; CRUD operations work. (3) Team - POST/GET/PATCH/DELETE all working. (4) Trades Board - POST/GET working. (5) External Jobs - returns 6 seeded partner leads. (6) GPS Devices - POST/GET working. (7) Membership - 4 plans (free/starter/pro/enterprise), subscribe switches plan. (8) Warranty Claims - POST/GET working. (9) Referrals - returns incoming/outgoing/invite_code/reward_per_signup:25. (10) Job History - returns only closed bookings. (11) Cost Guide - 15+ entries with category filter. (12) Trade Store - 27+ products with unit/featured/brand fields across all categories. All Phase 2 backend features production-ready."
+    - agent: "testing"
+      message: "REGRESSION TESTING COMPLETE: All 4 deployment blocker fixes verified working. (1) JWT_SECRET now required from env with no fallback - auth endpoints (register, login, /auth/me) all working, tokens valid across requests. (2) /jobs/mine N+1 fix - batch fetches bids, correctly adds bids_count to all jobs and bids_range {min, max} only to jobs with bids. (3) /bids/mine N+1 fix - batch fetches jobs, populates job field with complete job object for all bids. (4) /providers/nearby N+1 fix - batch fetches user records, populates name field from linked users for all providers. Category filter also working. All N+1 batching optimizations confirmed working correctly. Backend ready for deployment."
 
 
