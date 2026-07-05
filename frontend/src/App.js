@@ -30,6 +30,16 @@ import ProviderJobBoard from './pages/provider/ProviderJobBoard';
 import ProviderEarnings from './pages/provider/ProviderEarnings';
 import ProviderCalendar from './pages/provider/ProviderCalendar';
 import ProviderTradeStore from './pages/provider/ProviderTradeStore';
+import Quotations from './pages/provider/Quotations';
+import Team from './pages/provider/Team';
+import TradesBoard from './pages/provider/TradesBoard';
+import ExternalJobs from './pages/provider/ExternalJobs';
+import TrackWorkers from './pages/provider/TrackWorkers';
+import GpsDevices from './pages/provider/GpsDevices';
+import JobHistory from './pages/provider/JobHistory';
+import Referrals from './pages/provider/Referrals';
+import Membership from './pages/provider/Membership';
+import WarrantyClaims from './pages/provider/WarrantyClaims';
 
 import PropertyDashboard from './pages/property/PropertyDashboard';
 import InsuranceDashboard from './pages/insurance/InsuranceDashboard';
@@ -85,6 +95,16 @@ function AppRouter() {
         <Route path="/provider/earnings" element={<ProviderEarnings />} />
         <Route path="/provider/calendar" element={<ProviderCalendar />} />
         <Route path="/provider/trade-store" element={<ProviderTradeStore />} />
+        <Route path="/provider/quotations" element={<Quotations />} />
+        <Route path="/provider/team" element={<Team />} />
+        <Route path="/provider/trades-board" element={<TradesBoard />} />
+        <Route path="/provider/external-jobs" element={<ExternalJobs />} />
+        <Route path="/provider/track-workers" element={<TrackWorkers />} />
+        <Route path="/provider/gps-devices" element={<GpsDevices />} />
+        <Route path="/provider/job-history" element={<JobHistory />} />
+        <Route path="/provider/referrals" element={<Referrals />} />
+        <Route path="/provider/membership" element={<Membership />} />
+        <Route path="/provider/warranty-claims" element={<WarrantyClaims />} />
 
         {/* Property */}
         <Route path="/property/dashboard" element={<PropertyDashboard />} />

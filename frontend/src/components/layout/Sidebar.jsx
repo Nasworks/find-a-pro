@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, LogOut, ChevronLeft, ChevronRight, Sun, Moon, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, Shield, FileText, Wrench, Zap, Repeat } from 'lucide-react';
+import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, LogOut, ChevronLeft, ChevronRight, Sun, Moon, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, Shield, FileText, Wrench, Repeat, HardHat, Radio, History, Share2, Crown, ShieldCheck, LinkIcon, Locate } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useCart } from '../../context/CartContext';
@@ -34,11 +34,23 @@ const providerNav = [
     { to: '/provider/job-board', label: 'Job Board', icon: ClipboardList },
     { to: '/provider/calendar', label: 'Calendar', icon: Calendar },
     { to: '/provider/earnings', label: 'Earnings', icon: DollarSign },
+    { to: '/provider/quotations', label: 'Quotations', icon: FileText },
     { to: '/messages', label: 'Messages', icon: MessageSquare },
   ]},
+  { section: 'Team & Ops', items: [
+    { to: '/provider/team', label: 'Team', icon: Users },
+    { to: '/provider/trades-board', label: 'Trades Board', icon: HardHat },
+    { to: '/provider/external-jobs', label: 'External Jobs', icon: LinkIcon },
+    { to: '/provider/track-workers', label: 'Track Workers', icon: Locate },
+    { to: '/provider/gps-devices', label: 'GPS Devices', icon: Radio },
+    { to: '/provider/job-history', label: 'Job History', icon: History },
+  ]},
   { section: 'Grow', items: [
-    { to: '/news-feed', label: 'News Feed', icon: Newspaper },
     { to: '/provider/trade-store', label: 'Trade Store', icon: ShoppingBag },
+    { to: '/news-feed', label: 'News Feed', icon: Newspaper },
+    { to: '/provider/referrals', label: 'Referrals', icon: Share2 },
+    { to: '/provider/membership', label: 'Membership', icon: Crown },
+    { to: '/provider/warranty-claims', label: 'Warranty Claims', icon: ShieldCheck },
     { to: '/profile', label: 'Profile', icon: User },
   ]},
 ];

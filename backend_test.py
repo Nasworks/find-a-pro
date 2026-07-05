@@ -1,9 +1,9 @@
+#!/usr/bin/env python3
 """
-Comprehensive Backend API Tests for Dispatchr
-Tests all endpoints according to the review request
+Dispatchr Backend API Testing - Phase 2 Enhanced Features
+Tests all newly added endpoints with fresh provider + customer accounts
 """
 import requests
-import random
 import json
 from datetime import datetime, timedelta
 
@@ -11,921 +11,909 @@ from datetime import datetime, timedelta
 BASE_URL = "https://next-gen-app-39.preview.emergentagent.com/api"
 
 # Test results tracking
-test_results = {
-    "passed": [],
-    "failed": [],
-    "total": 0
-}
+test_results = []
+passed = 0
+failed = 0
 
-def log_test(name, passed, details=""):
-    """Log test result"""
-    test_results["total"] += 1
-    if passed:
-        test_results["passed"].append(name)
-        print(f"✅ PASS: {name}")
+def log_test(name, success, details=""):
+    global passed, failed
+    test_results.append({"test": name, "passed": success, "details": details})
+    if success:
+        passed += 1
+        print(f"✅ {name}")
     else:
-        test_results["failed"].append({"name": name, "details": details})
-        print(f"❌ FAIL: {name}")
-        if details:
-            print(f"   Details: {details}")
+        failed += 1
+        print(f"❌ {name}: {details}")
 
 def print_summary():
-    """Print test summary"""
-    print("\n" + "="*80)
-    print("TEST SUMMARY")
-    print("="*80)
-    print(f"Total Tests: {test_results['total']}")
-    print(f"Passed: {len(test_results['passed'])}")
-    print(f"Failed: {len(test_results['failed'])}")
-    print(f"Success Rate: {len(test_results['passed'])/test_results['total']*100:.1f}%")
-    
-    if test_results['failed']:
-        print("\n❌ FAILED TESTS:")
-        for fail in test_results['failed']:
-            print(f"  - {fail['name']}")
-            if fail['details']:
-                print(f"    {fail['details']}")
-    print("="*80)
+    print(f"\n{'='*80}")
+    print(f"TEST SUMMARY: {passed} passed, {failed} failed out of {passed + failed} tests")
+    print(f"{'='*80}\n")
+    if failed > 0:
+        print("FAILED TESTS:")
+        for t in test_results:
+            if not t["passed"]:
+                print(f"  ❌ {t['test']}: {t['details']}")
 
-# Test data
-rand_suffix = random.randint(1000, 9999)
-customer_a_email = f"tester_a_{rand_suffix}@dispatchr.demo"
-provider_b_email = f"tester_b_{rand_suffix}@dispatchr.demo"
-customer_a_token = None
-provider_b_token = None
-customer_a_id = None
-provider_b_id = None
-
-print("="*80)
-print("DISPATCHR BACKEND API TESTS")
-print("="*80)
-print(f"Base URL: {BASE_URL}")
-print(f"Customer A: {customer_a_email}")
-print(f"Provider B: {provider_b_email}")
+# ============ SETUP: Create fresh test users ============
+print("\n" + "="*80)
+print("PHASE 2 BACKEND TESTING - Enhanced Bids, Quotations, Team, etc.")
 print("="*80 + "\n")
 
-# ============================================================================
-# 1. AUTH TESTS (HIGH PRIORITY)
-# ============================================================================
-print("\n🔐 TESTING AUTH ENDPOINTS\n")
+print("🔧 Setting up test users...")
 
-# 1.1 Register Customer A
+# Register fresh provider
+provider_email = f"provider_{datetime.now().timestamp()}@test.dispatchr.nz"
+provider_payload = {
+    "email": provider_email,
+    "password": "TestPass123!",
+    "name": "Test Provider Services",
+    "role": "provider",
+    "phone": "021-555-1234",
+    "city": "Auckland"
+}
+
 try:
-    resp = requests.post(f"{BASE_URL}/auth/register", json={
-        "name": "Test Customer A",
-        "email": customer_a_email,
-        "password": "demo1234",
-        "role": "customer"
-    }, timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "user" in data and "token" in data:
-            customer_a_token = data["token"]
-            customer_a_id = data["user"]["user_id"]
-            log_test("Auth: Register customer A", True)
-        else:
-            log_test("Auth: Register customer A", False, "Missing user or token in response")
+    r = requests.post(f"{BASE_URL}/auth/register", json=provider_payload, timeout=10)
+    if r.status_code == 200:
+        provider_data = r.json()
+        provider_token = provider_data["token"]
+        provider_id = provider_data["user"]["user_id"]
+        print(f"✅ Provider registered: {provider_email}")
     else:
-        log_test("Auth: Register customer A", False, f"Status {resp.status_code}: {resp.text}")
+        print(f"❌ Provider registration failed: {r.status_code} {r.text}")
+        exit(1)
 except Exception as e:
-    log_test("Auth: Register customer A", False, str(e))
+    print(f"❌ Provider registration error: {e}")
+    exit(1)
 
-# 1.2 Duplicate registration should fail with 400
+# Register fresh customer
+customer_email = f"customer_{datetime.now().timestamp()}@test.dispatchr.nz"
+customer_payload = {
+    "email": customer_email,
+    "password": "TestPass123!",
+    "name": "Test Customer",
+    "role": "customer",
+    "phone": "021-555-5678",
+    "city": "Auckland"
+}
+
 try:
-    resp = requests.post(f"{BASE_URL}/auth/register", json={
-        "name": "Test Customer A",
-        "email": customer_a_email,
-        "password": "demo1234",
-        "role": "customer"
-    }, timeout=10)
-    
-    if resp.status_code == 400:
-        log_test("Auth: Duplicate register returns 400", True)
+    r = requests.post(f"{BASE_URL}/auth/register", json=customer_payload, timeout=10)
+    if r.status_code == 200:
+        customer_data = r.json()
+        customer_token = customer_data["token"]
+        customer_id = customer_data["user"]["user_id"]
+        print(f"✅ Customer registered: {customer_email}")
     else:
-        log_test("Auth: Duplicate register returns 400", False, f"Expected 400, got {resp.status_code}")
+        print(f"❌ Customer registration failed: {r.status_code} {r.text}")
+        exit(1)
 except Exception as e:
-    log_test("Auth: Duplicate register returns 400", False, str(e))
+    print(f"❌ Customer registration error: {e}")
+    exit(1)
 
-# 1.3 Login with correct credentials
+provider_headers = {"Authorization": f"Bearer {provider_token}"}
+customer_headers = {"Authorization": f"Bearer {customer_token}"}
+
+print(f"\n✅ Test users ready\n")
+
+# ============ 1. ENHANCED BIDS ============
+print("="*80)
+print("1. TESTING ENHANCED BIDS")
+print("="*80 + "\n")
+
+# First, customer creates a job
+job_payload = {
+    "title": "Kitchen Plumbing Upgrade",
+    "description": "Replace kitchen sink, install new mixer tap, and fix leaking pipe under sink",
+    "category": "plumbing",
+    "location": "Auckland Central",
+    "budget_min": 500,
+    "budget_max": 1200,
+    "urgency": "this_week",
+    "mode": "quotes"
+}
+
 try:
-    resp = requests.post(f"{BASE_URL}/auth/login", json={
-        "email": customer_a_email,
-        "password": "demo1234"
-    }, timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "user" in data and "token" in data:
-            log_test("Auth: Login with correct credentials", True)
-        else:
-            log_test("Auth: Login with correct credentials", False, "Missing user or token")
+    r = requests.post(f"{BASE_URL}/jobs", json=job_payload, headers=customer_headers, timeout=10)
+    if r.status_code == 200:
+        job = r.json()
+        job_id = job["job_id"]
+        log_test("Customer creates job", True, f"Job ID: {job_id}")
     else:
-        log_test("Auth: Login with correct credentials", False, f"Status {resp.status_code}")
+        log_test("Customer creates job", False, f"{r.status_code} {r.text}")
+        job_id = None
 except Exception as e:
-    log_test("Auth: Login with correct credentials", False, str(e))
+    log_test("Customer creates job", False, str(e))
+    job_id = None
 
-# 1.4 Login with wrong password should return 401
-try:
-    resp = requests.post(f"{BASE_URL}/auth/login", json={
-        "email": customer_a_email,
-        "password": "wrongpassword"
-    }, timeout=10)
+# Provider creates enhanced bid with full payload
+if job_id:
+    bid_payload = {
+        "job_id": job_id,
+        "amount": 850.0,
+        "message": "I can complete this job with high-quality materials and workmanship. 15 years experience in residential plumbing.",
+        "eta_days": 3,
+        "start_date": (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d"),
+        "line_items": [
+            {"label": "Kitchen sink installation", "qty": 1, "unit_price": 350.0, "total": 350.0},
+            {"label": "Mixer tap supply & install", "qty": 1, "unit_price": 280.0, "total": 280.0},
+            {"label": "Pipe repair & materials", "qty": 1, "unit_price": 150.0, "total": 150.0},
+            {"label": "Labour (2 hours)", "qty": 2, "unit_price": 35.0, "total": 70.0}
+        ],
+        "warranty_months": 24,
+        "payment_terms": "30% deposit, 70% on completion",
+        "terms": "All work guaranteed for 24 months. Materials include premium Methven mixer tap. Work includes cleanup and disposal of old fixtures.",
+        "documents": [
+            {"name": "Plumbing License.pdf", "size": "245KB", "type": "application/pdf", "url": "https://example.com/docs/license.pdf"},
+            {"name": "Insurance Certificate.pdf", "size": "180KB", "type": "application/pdf", "url": "https://example.com/docs/insurance.pdf"}
+        ]
+    }
     
-    if resp.status_code == 401:
-        log_test("Auth: Wrong password returns 401", True)
-    else:
-        log_test("Auth: Wrong password returns 401", False, f"Expected 401, got {resp.status_code}")
-except Exception as e:
-    log_test("Auth: Wrong password returns 401", False, str(e))
-
-# 1.5 GET /auth/me with token
-try:
-    resp = requests.get(f"{BASE_URL}/auth/me", 
-                       headers={"Authorization": f"Bearer {customer_a_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "user_id" in data and data["user_id"] == customer_a_id:
-            log_test("Auth: GET /auth/me returns user", True)
-        else:
-            log_test("Auth: GET /auth/me returns user", False, "User data mismatch")
-    else:
-        log_test("Auth: GET /auth/me returns user", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Auth: GET /auth/me returns user", False, str(e))
-
-# 1.6 Register Provider B
-try:
-    resp = requests.post(f"{BASE_URL}/auth/register", json={
-        "name": "Test Provider B",
-        "email": provider_b_email,
-        "password": "demo1234",
-        "role": "provider"
-    }, timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "user" in data and "token" in data:
-            provider_b_token = data["token"]
-            provider_b_id = data["user"]["user_id"]
-            log_test("Auth: Register provider B", True)
-        else:
-            log_test("Auth: Register provider B", False, "Missing user or token")
-    else:
-        log_test("Auth: Register provider B", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Auth: Register provider B", False, str(e))
-
-# 1.7 Role switching - Customer A switches to provider
-try:
-    resp = requests.patch(f"{BASE_URL}/auth/role",
-                         headers={"Authorization": f"Bearer {customer_a_token}"},
-                         json={"role": "provider"},
-                         timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if data.get("role") == "provider":
-            log_test("Auth: Role switch to provider", True)
-            # Switch back to customer for remaining tests
-            requests.patch(f"{BASE_URL}/auth/role",
-                         headers={"Authorization": f"Bearer {customer_a_token}"},
-                         json={"role": "customer"},
-                         timeout=10)
-        else:
-            log_test("Auth: Role switch to provider", False, "Role not updated")
-    else:
-        log_test("Auth: Role switch to provider", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Auth: Role switch to provider", False, str(e))
-
-# ============================================================================
-# 2. JOBS & BIDS TESTS (HIGH PRIORITY)
-# ============================================================================
-print("\n💼 TESTING JOBS & BIDS ENDPOINTS\n")
-
-job_id = None
-bid_id = None
-booking_id = None
-
-# 2.1 Customer A creates a job
-try:
-    resp = requests.post(f"{BASE_URL}/jobs",
-                        headers={"Authorization": f"Bearer {customer_a_token}"},
-                        json={
-                            "title": "Fix leaking kitchen tap",
-                            "description": "Kitchen tap is dripping constantly, needs urgent repair",
-                            "category": "plumbing",
-                            "budget_min": 100,
-                            "budget_max": 300,
-                            "urgency": "asap"
-                        },
-                        timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "job_id" in data:
-            job_id = data["job_id"]
-            log_test("Jobs: Create job as customer", True)
-        else:
-            log_test("Jobs: Create job as customer", False, "No job_id in response")
-    else:
-        log_test("Jobs: Create job as customer", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Jobs: Create job as customer", False, str(e))
-
-# 2.2 GET /jobs/mine (as Customer A)
-try:
-    resp = requests.get(f"{BASE_URL}/jobs/mine",
-                       headers={"Authorization": f"Bearer {customer_a_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            found = any(j.get("job_id") == job_id for j in data)
-            if found:
-                log_test("Jobs: GET /jobs/mine shows created job", True)
-            else:
-                log_test("Jobs: GET /jobs/mine shows created job", False, "Job not found in list")
-        else:
-            log_test("Jobs: GET /jobs/mine shows created job", False, "Empty or invalid response")
-    else:
-        log_test("Jobs: GET /jobs/mine shows created job", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Jobs: GET /jobs/mine shows created job", False, str(e))
-
-# 2.3 GET /jobs/board (as Provider B)
-try:
-    resp = requests.get(f"{BASE_URL}/jobs/board",
-                       headers={"Authorization": f"Bearer {provider_b_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            found = any(j.get("job_id") == job_id for j in data)
-            if found:
-                log_test("Jobs: GET /jobs/board shows job", True)
-            else:
-                log_test("Jobs: GET /jobs/board shows job", False, "Job not found on board")
-        else:
-            log_test("Jobs: GET /jobs/board shows job", False, "Empty or invalid response")
-    else:
-        log_test("Jobs: GET /jobs/board shows job", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Jobs: GET /jobs/board shows job", False, str(e))
-
-# 2.4 GET /jobs/{job_id}
-try:
-    resp = requests.get(f"{BASE_URL}/jobs/{job_id}",
-                       headers={"Authorization": f"Bearer {customer_a_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "job" in data and "bids" in data:
-            log_test("Jobs: GET /jobs/{job_id} returns job + bids", True)
-        else:
-            log_test("Jobs: GET /jobs/{job_id} returns job + bids", False, "Missing job or bids")
-    else:
-        log_test("Jobs: GET /jobs/{job_id} returns job + bids", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Jobs: GET /jobs/{job_id} returns job + bids", False, str(e))
-
-# 2.5 Provider B creates a bid
-try:
-    resp = requests.post(f"{BASE_URL}/bids",
-                        headers={"Authorization": f"Bearer {provider_b_token}"},
-                        json={
-                            "job_id": job_id,
-                            "amount": 200,
-                            "message": "I can help with this plumbing issue",
-                            "eta_days": 2
-                        },
-                        timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "bid_id" in data:
-            bid_id = data["bid_id"]
-            log_test("Bids: Create bid as provider", True)
-        else:
-            log_test("Bids: Create bid as provider", False, "No bid_id in response")
-    else:
-        log_test("Bids: Create bid as provider", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Bids: Create bid as provider", False, str(e))
-
-# 2.6 GET /bids/mine (as Provider B)
-try:
-    resp = requests.get(f"{BASE_URL}/bids/mine",
-                       headers={"Authorization": f"Bearer {provider_b_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            found = any(b.get("bid_id") == bid_id for b in data)
-            if found:
-                log_test("Bids: GET /bids/mine shows bid", True)
-            else:
-                log_test("Bids: GET /bids/mine shows bid", False, "Bid not found")
-        else:
-            log_test("Bids: GET /bids/mine shows bid", False, "Empty or invalid response")
-    else:
-        log_test("Bids: GET /bids/mine shows bid", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Bids: GET /bids/mine shows bid", False, str(e))
-
-# 2.7 Customer A accepts the bid
-try:
-    resp = requests.post(f"{BASE_URL}/bids/{bid_id}/accept",
-                        headers={"Authorization": f"Bearer {customer_a_token}"},
-                        timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "booking_id" in data:
-            booking_id = data["booking_id"]
-            log_test("Bids: Accept bid creates booking", True)
-        else:
-            log_test("Bids: Accept bid creates booking", False, "No booking_id in response")
-    else:
-        log_test("Bids: Accept bid creates booking", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Bids: Accept bid creates booking", False, str(e))
-
-# ============================================================================
-# 3. BOOKINGS TESTS (HIGH PRIORITY)
-# ============================================================================
-print("\n📅 TESTING BOOKINGS ENDPOINTS\n")
-
-# 3.1 GET /bookings/mine (as Customer A)
-try:
-    resp = requests.get(f"{BASE_URL}/bookings/mine",
-                       headers={"Authorization": f"Bearer {customer_a_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            found = any(b.get("booking_id") == booking_id for b in data)
-            if found:
-                log_test("Bookings: GET /bookings/mine (customer) shows booking", True)
-            else:
-                log_test("Bookings: GET /bookings/mine (customer) shows booking", False, "Booking not found")
-        else:
-            log_test("Bookings: GET /bookings/mine (customer) shows booking", False, "Empty response")
-    else:
-        log_test("Bookings: GET /bookings/mine (customer) shows booking", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Bookings: GET /bookings/mine (customer) shows booking", False, str(e))
-
-# 3.2 GET /bookings/mine (as Provider B)
-try:
-    resp = requests.get(f"{BASE_URL}/bookings/mine",
-                       headers={"Authorization": f"Bearer {provider_b_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            found = any(b.get("booking_id") == booking_id for b in data)
-            if found:
-                log_test("Bookings: GET /bookings/mine (provider) shows booking", True)
-            else:
-                log_test("Bookings: GET /bookings/mine (provider) shows booking", False, "Booking not found")
-        else:
-            log_test("Bookings: GET /bookings/mine (provider) shows booking", False, "Empty response")
-    else:
-        log_test("Bookings: GET /bookings/mine (provider) shows booking", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Bookings: GET /bookings/mine (provider) shows booking", False, str(e))
-
-# 3.3 Update booking status through pipeline
-statuses = ["en_route", "working", "done", "paid"]
-for status in statuses:
     try:
-        resp = requests.patch(f"{BASE_URL}/bookings/{booking_id}/status",
-                            headers={"Authorization": f"Bearer {provider_b_token}"},
-                            json={"status": status},
-                            timeout=10)
-        
-        if resp.status_code == 200:
-            log_test(f"Bookings: Update status to '{status}'", True)
+        r = requests.post(f"{BASE_URL}/bids", json=bid_payload, headers=provider_headers, timeout=10)
+        if r.status_code == 200:
+            bid = r.json()
+            bid_id = bid["bid_id"]
+            # Verify all fields are present
+            has_line_items = len(bid.get("line_items", [])) == 4
+            has_warranty = bid.get("warranty_months") == 24
+            has_payment_terms = bid.get("payment_terms") == "30% deposit, 70% on completion"
+            has_terms = len(bid.get("terms", "")) > 0
+            has_documents = len(bid.get("documents", [])) == 2
+            
+            if all([has_line_items, has_warranty, has_payment_terms, has_terms, has_documents]):
+                log_test("POST /api/bids with full enhanced payload", True, f"Bid ID: {bid_id}, all fields present")
+            else:
+                missing = []
+                if not has_line_items: missing.append("line_items")
+                if not has_warranty: missing.append("warranty_months")
+                if not has_payment_terms: missing.append("payment_terms")
+                if not has_terms: missing.append("terms")
+                if not has_documents: missing.append("documents")
+                log_test("POST /api/bids with full enhanced payload", False, f"Missing fields: {missing}")
         else:
-            log_test(f"Bookings: Update status to '{status}'", False, f"Status {resp.status_code}")
+            log_test("POST /api/bids with full enhanced payload", False, f"{r.status_code} {r.text}")
+            bid_id = None
     except Exception as e:
-        log_test(f"Bookings: Update status to '{status}'", False, str(e))
+        log_test("POST /api/bids with full enhanced payload", False, str(e))
+        bid_id = None
 
-# ============================================================================
-# 4. MESSAGES TESTS (MEDIUM PRIORITY)
-# ============================================================================
-print("\n💬 TESTING MESSAGES ENDPOINTS\n")
-
-thread_id = None
-
-# 4.1 Customer A creates thread with Provider B
-try:
-    resp = requests.post(f"{BASE_URL}/threads",
-                        headers={"Authorization": f"Bearer {customer_a_token}"},
-                        json={
-                            "other_user_id": provider_b_id,
-                            "subject": "Hello Provider",
-                            "initial_message": "Hi there, I have a question about the job"
-                        },
-                        timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "thread_id" in data:
-            thread_id = data["thread_id"]
-            log_test("Messages: Create thread with initial message", True)
-        else:
-            log_test("Messages: Create thread with initial message", False, "No thread_id")
-    else:
-        log_test("Messages: Create thread with initial message", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Messages: Create thread with initial message", False, str(e))
-
-# 4.2 GET /threads (as Customer A)
-try:
-    resp = requests.get(f"{BASE_URL}/threads",
-                       headers={"Authorization": f"Bearer {customer_a_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            found = any(t.get("thread_id") == thread_id for t in data)
-            if found:
-                log_test("Messages: GET /threads shows thread", True)
+    # GET /api/jobs/{job_id} - verify bids include enhanced fields
+    if bid_id:
+        try:
+            r = requests.get(f"{BASE_URL}/jobs/{job_id}", headers=customer_headers, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                bids = data.get("bids", [])
+                if len(bids) > 0:
+                    bid = bids[0]
+                    has_line_items = len(bid.get("line_items", [])) > 0
+                    has_documents = len(bid.get("documents", [])) > 0
+                    has_terms = len(bid.get("terms", "")) > 0
+                    has_warranty = "warranty_months" in bid
+                    has_payment = "payment_terms" in bid
+                    
+                    if all([has_line_items, has_documents, has_terms, has_warranty, has_payment]):
+                        log_test("GET /api/jobs/{job_id} - bids include enhanced fields", True)
+                    else:
+                        log_test("GET /api/jobs/{job_id} - bids include enhanced fields", False, "Some enhanced fields missing from bids")
+                else:
+                    log_test("GET /api/jobs/{job_id} - bids include enhanced fields", False, "No bids returned")
             else:
-                log_test("Messages: GET /threads shows thread", False, "Thread not found")
-        else:
-            log_test("Messages: GET /threads shows thread", False, "Empty response")
-    else:
-        log_test("Messages: GET /threads shows thread", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Messages: GET /threads shows thread", False, str(e))
+                log_test("GET /api/jobs/{job_id} - bids include enhanced fields", False, f"{r.status_code}")
+        except Exception as e:
+            log_test("GET /api/jobs/{job_id} - bids include enhanced fields", False, str(e))
 
-# 4.3 GET /threads/{thread_id}/messages
-try:
-    resp = requests.get(f"{BASE_URL}/threads/{thread_id}/messages",
-                       headers={"Authorization": f"Bearer {customer_a_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "thread" in data and "messages" in data:
-            log_test("Messages: GET /threads/{id}/messages returns messages", True)
-        else:
-            log_test("Messages: GET /threads/{id}/messages returns messages", False, "Missing thread or messages")
-    else:
-        log_test("Messages: GET /threads/{id}/messages returns messages", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Messages: GET /threads/{id}/messages returns messages", False, str(e))
-
-# 4.4 POST /messages (Provider B replies)
-try:
-    resp = requests.post(f"{BASE_URL}/messages",
-                        headers={"Authorization": f"Bearer {provider_b_token}"},
-                        json={
-                            "thread_id": thread_id,
-                            "content": "How much will it cost?"
-                        },
-                        timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "message_id" in data:
-            log_test("Messages: POST /messages appends message", True)
-        else:
-            log_test("Messages: POST /messages appends message", False, "No message_id")
-    else:
-        log_test("Messages: POST /messages appends message", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Messages: POST /messages appends message", False, str(e))
-
-# ============================================================================
-# 5. MARKETPLACE TESTS (MEDIUM PRIORITY)
-# ============================================================================
-print("\n🛒 TESTING MARKETPLACE ENDPOINTS\n")
-
-# 5.1 GET /products (should return 20+ products)
-try:
-    resp = requests.get(f"{BASE_URL}/products", timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) >= 20:
-            log_test("Marketplace: GET /products returns 20+ products", True)
-        else:
-            log_test("Marketplace: GET /products returns 20+ products", False, f"Only {len(data)} products")
-    else:
-        log_test("Marketplace: GET /products returns 20+ products", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Marketplace: GET /products returns 20+ products", False, str(e))
-
-# 5.2 GET /products?category=Heating%20%26%20Cooling
-try:
-    resp = requests.get(f"{BASE_URL}/products?category=Heating%20%26%20Cooling", timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            # Check if all products are in the correct category
-            all_correct = all(p.get("category") == "Heating & Cooling" for p in data)
-            if all_correct:
-                log_test("Marketplace: GET /products?category filters correctly", True)
+    # POST /api/bids/{bid_id}/counter - create counter-offer
+    if bid_id:
+        counter_payload = {
+            "job_id": job_id,
+            "amount": 780.0,
+            "message": "Counter-offer: Can we reduce the scope slightly? I can do the same work for $780 if we use a standard tap instead of premium.",
+            "eta_days": 3,
+            "line_items": [
+                {"label": "Kitchen sink installation", "qty": 1, "unit_price": 350.0, "total": 350.0},
+                {"label": "Standard mixer tap supply & install", "qty": 1, "unit_price": 210.0, "total": 210.0},
+                {"label": "Pipe repair & materials", "qty": 1, "unit_price": 150.0, "total": 150.0},
+                {"label": "Labour (2 hours)", "qty": 2, "unit_price": 35.0, "total": 70.0}
+            ],
+            "warranty_months": 24,
+            "payment_terms": "30% deposit, 70% on completion",
+            "terms": "All work guaranteed for 24 months. Standard quality tap. Work includes cleanup.",
+            "documents": []
+        }
+        
+        try:
+            r = requests.post(f"{BASE_URL}/bids/{bid_id}/counter", json=counter_payload, headers=customer_headers, timeout=10)
+            if r.status_code == 200:
+                counter_bid = r.json()
+                counter_bid_id = counter_bid["bid_id"]
+                # Verify it's a new bid with revision+1 and previous_bid_id set
+                has_revision = counter_bid.get("revision", 1) == 2
+                has_previous = counter_bid.get("previous_bid_id") == bid_id
+                
+                if has_revision and has_previous:
+                    log_test("POST /api/bids/{bid_id}/counter - creates new bid with revision+1", True, f"Counter bid ID: {counter_bid_id}")
+                else:
+                    log_test("POST /api/bids/{bid_id}/counter - creates new bid with revision+1", False, f"revision={counter_bid.get('revision')}, previous_bid_id={counter_bid.get('previous_bid_id')}")
+                
+                # Verify old bid is marked as "countered"
+                r2 = requests.get(f"{BASE_URL}/jobs/{job_id}", headers=customer_headers, timeout=10)
+                if r2.status_code == 200:
+                    data = r2.json()
+                    bids = data.get("bids", [])
+                    old_bid = next((b for b in bids if b["bid_id"] == bid_id), None)
+                    if old_bid and old_bid.get("status") == "countered":
+                        log_test("POST /api/bids/{bid_id}/counter - old bid marked as 'countered'", True)
+                    else:
+                        log_test("POST /api/bids/{bid_id}/counter - old bid marked as 'countered'", False, f"Old bid status: {old_bid.get('status') if old_bid else 'not found'}")
             else:
-                log_test("Marketplace: GET /products?category filters correctly", False, "Wrong category in results")
-        else:
-            log_test("Marketplace: GET /products?category filters correctly", False, "Empty response")
-    else:
-        log_test("Marketplace: GET /products?category filters correctly", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Marketplace: GET /products?category filters correctly", False, str(e))
+                log_test("POST /api/bids/{bid_id}/counter - creates new bid with revision+1", False, f"{r.status_code} {r.text}")
+                counter_bid_id = None
+        except Exception as e:
+            log_test("POST /api/bids/{bid_id}/counter - creates new bid with revision+1", False, str(e))
+            counter_bid_id = None
 
-# 5.3 GET /products?q=heat (search)
-try:
-    resp = requests.get(f"{BASE_URL}/products?q=heat", timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            log_test("Marketplace: GET /products?q=heat returns matching", True)
-        else:
-            log_test("Marketplace: GET /products?q=heat returns matching", False, "No results")
-    else:
-        log_test("Marketplace: GET /products?q=heat returns matching", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Marketplace: GET /products?q=heat returns matching", False, str(e))
-
-# 5.4 GET /products/p001
-try:
-    resp = requests.get(f"{BASE_URL}/products/p001", timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "product_id" in data and data["product_id"] == "p001":
-            log_test("Marketplace: GET /products/{id} returns single product", True)
-        else:
-            log_test("Marketplace: GET /products/{id} returns single product", False, "Wrong product")
-    else:
-        log_test("Marketplace: GET /products/{id} returns single product", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Marketplace: GET /products/{id} returns single product", False, str(e))
-
-# 5.5 POST /orders
-try:
-    resp = requests.post(f"{BASE_URL}/orders",
-                        headers={"Authorization": f"Bearer {customer_a_token}"},
-                        json={
-                            "items": [{"product_id": "p001", "quantity": 2}],
-                            "address": "Auckland"
-                        },
-                        timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "order_id" in data and "total" in data:
-            # p001 is Mitsubishi 5kW Heat Pump at $2499, so 2 * 2499 = 4998
-            expected_total = 2499.0 * 2
-            if abs(data["total"] - expected_total) < 1:
-                log_test("Marketplace: POST /orders computes total correctly (~$4998)", True)
+    # Create another bid for reject/withdraw tests
+    if job_id:
+        bid_payload2 = {
+            "job_id": job_id,
+            "amount": 950.0,
+            "message": "Premium service with 3-year warranty",
+            "eta_days": 5,
+            "line_items": [{"label": "Full service", "qty": 1, "unit_price": 950.0, "total": 950.0}],
+            "warranty_months": 36,
+            "payment_terms": "50% upfront, 50% on completion"
+        }
+        
+        try:
+            r = requests.post(f"{BASE_URL}/bids", json=bid_payload2, headers=provider_headers, timeout=10)
+            if r.status_code == 200:
+                bid2 = r.json()
+                bid2_id = bid2["bid_id"]
+                
+                # POST /api/bids/{bid_id}/reject as job owner
+                r2 = requests.post(f"{BASE_URL}/bids/{bid2_id}/reject", headers=customer_headers, timeout=10)
+                if r2.status_code == 200:
+                    # Verify status is rejected
+                    r3 = requests.get(f"{BASE_URL}/jobs/{job_id}", headers=customer_headers, timeout=10)
+                    if r3.status_code == 200:
+                        data = r3.json()
+                        bids = data.get("bids", [])
+                        rejected_bid = next((b for b in bids if b["bid_id"] == bid2_id), None)
+                        if rejected_bid and rejected_bid.get("status") == "rejected":
+                            log_test("POST /api/bids/{bid_id}/reject - status='rejected'", True)
+                        else:
+                            log_test("POST /api/bids/{bid_id}/reject - status='rejected'", False, f"Status: {rejected_bid.get('status') if rejected_bid else 'not found'}")
+                else:
+                    log_test("POST /api/bids/{bid_id}/reject - status='rejected'", False, f"{r2.status_code}")
             else:
-                log_test("Marketplace: POST /orders computes total correctly (~$4998)", False, 
-                        f"Expected ~{expected_total}, got {data['total']}")
-        else:
-            log_test("Marketplace: POST /orders computes total correctly (~$4998)", False, "Missing order_id or total")
-    else:
-        log_test("Marketplace: POST /orders computes total correctly (~$4998)", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Marketplace: POST /orders computes total correctly (~$4998)", False, str(e))
+                log_test("POST /api/bids/{bid_id}/reject - status='rejected'", False, "Failed to create second bid")
+        except Exception as e:
+            log_test("POST /api/bids/{bid_id}/reject - status='rejected'", False, str(e))
 
-# 5.6 GET /orders/mine
-try:
-    resp = requests.get(f"{BASE_URL}/orders/mine",
-                       headers={"Authorization": f"Bearer {customer_a_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            log_test("Marketplace: GET /orders/mine returns orders", True)
-        else:
-            log_test("Marketplace: GET /orders/mine returns orders", False, "Empty response")
-    else:
-        log_test("Marketplace: GET /orders/mine returns orders", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Marketplace: GET /orders/mine returns orders", False, str(e))
-
-# ============================================================================
-# 6. FEED TESTS (MEDIUM PRIORITY)
-# ============================================================================
-print("\n📰 TESTING FEED ENDPOINTS\n")
-
-post_id = None
-
-# 6.1 GET /feed (should return >=6 seeded posts)
-try:
-    resp = requests.get(f"{BASE_URL}/feed", timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) >= 6:
-            log_test("Feed: GET /feed returns >=6 seeded posts", True)
-        else:
-            log_test("Feed: GET /feed returns >=6 seeded posts", False, f"Only {len(data)} posts")
-    else:
-        log_test("Feed: GET /feed returns >=6 seeded posts", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Feed: GET /feed returns >=6 seeded posts", False, str(e))
-
-# 6.2 GET /feed?post_type=sale
-try:
-    resp = requests.get(f"{BASE_URL}/feed?post_type=sale", timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            all_sale = all(p.get("post_type") == "sale" for p in data)
-            if all_sale:
-                log_test("Feed: GET /feed?post_type=sale filters correctly", True)
+    # Create third bid for withdraw test
+    if job_id:
+        bid_payload3 = {
+            "job_id": job_id,
+            "amount": 1100.0,
+            "message": "High-end materials",
+            "eta_days": 7,
+            "line_items": [{"label": "Premium service", "qty": 1, "unit_price": 1100.0, "total": 1100.0}],
+            "warranty_months": 12,
+            "payment_terms": "50% upfront, 50% on completion"
+        }
+        
+        try:
+            r = requests.post(f"{BASE_URL}/bids", json=bid_payload3, headers=provider_headers, timeout=10)
+            if r.status_code == 200:
+                bid3 = r.json()
+                bid3_id = bid3["bid_id"]
+                
+                # POST /api/bids/{bid_id}/withdraw as provider
+                r2 = requests.post(f"{BASE_URL}/bids/{bid3_id}/withdraw", headers=provider_headers, timeout=10)
+                if r2.status_code == 200:
+                    # Verify status is withdrawn
+                    r3 = requests.get(f"{BASE_URL}/jobs/{job_id}", headers=customer_headers, timeout=10)
+                    if r3.status_code == 200:
+                        data = r3.json()
+                        bids = data.get("bids", [])
+                        withdrawn_bid = next((b for b in bids if b["bid_id"] == bid3_id), None)
+                        if withdrawn_bid and withdrawn_bid.get("status") == "withdrawn":
+                            log_test("POST /api/bids/{bid_id}/withdraw - status='withdrawn'", True)
+                        else:
+                            log_test("POST /api/bids/{bid_id}/withdraw - status='withdrawn'", False, f"Status: {withdrawn_bid.get('status') if withdrawn_bid else 'not found'}")
+                else:
+                    log_test("POST /api/bids/{bid_id}/withdraw - status='withdrawn'", False, f"{r2.status_code}")
             else:
-                log_test("Feed: GET /feed?post_type=sale filters correctly", False, "Wrong post_type in results")
-        else:
-            log_test("Feed: GET /feed?post_type=sale filters correctly", False, "Empty response")
-    else:
-        log_test("Feed: GET /feed?post_type=sale filters correctly", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Feed: GET /feed?post_type=sale filters correctly", False, str(e))
+                log_test("POST /api/bids/{bid_id}/withdraw - status='withdrawn'", False, "Failed to create third bid")
+        except Exception as e:
+            log_test("POST /api/bids/{bid_id}/withdraw - status='withdrawn'", False, str(e))
 
-# 6.3 POST /feed (as Provider B)
+    # POST /api/bids/{bid_id}/comments - create comment
+    if bid_id:
+        comment_payload = {"content": "Can you provide more details about the warranty coverage?"}
+        try:
+            r = requests.post(f"{BASE_URL}/bids/{bid_id}/comments", json=comment_payload, headers=customer_headers, timeout=10)
+            if r.status_code == 200:
+                comment = r.json()
+                if comment.get("content") == comment_payload["content"]:
+                    log_test("POST /api/bids/{bid_id}/comments - creates comment", True)
+                else:
+                    log_test("POST /api/bids/{bid_id}/comments - creates comment", False, "Comment content mismatch")
+            else:
+                log_test("POST /api/bids/{bid_id}/comments - creates comment", False, f"{r.status_code} {r.text}")
+        except Exception as e:
+            log_test("POST /api/bids/{bid_id}/comments - creates comment", False, str(e))
+
+    # GET /api/bids/{bid_id}/comments - get comments in chronological order
+    if bid_id:
+        # Add another comment
+        comment_payload2 = {"content": "The warranty covers all parts and labour for 24 months from completion date."}
+        try:
+            requests.post(f"{BASE_URL}/bids/{bid_id}/comments", json=comment_payload2, headers=provider_headers, timeout=10)
+            
+            r = requests.get(f"{BASE_URL}/bids/{bid_id}/comments", headers=customer_headers, timeout=10)
+            if r.status_code == 200:
+                comments = r.json()
+                if len(comments) >= 2:
+                    # Verify chronological order (first comment should be older)
+                    first_time = datetime.fromisoformat(comments[0]["created_at"].replace("Z", "+00:00"))
+                    second_time = datetime.fromisoformat(comments[1]["created_at"].replace("Z", "+00:00"))
+                    if first_time <= second_time:
+                        log_test("GET /api/bids/{bid_id}/comments - returns comments in chronological order", True, f"{len(comments)} comments")
+                    else:
+                        log_test("GET /api/bids/{bid_id}/comments - returns comments in chronological order", False, "Not in chronological order")
+                else:
+                    log_test("GET /api/bids/{bid_id}/comments - returns comments in chronological order", False, f"Only {len(comments)} comments found")
+            else:
+                log_test("GET /api/bids/{bid_id}/comments - returns comments in chronological order", False, f"{r.status_code}")
+        except Exception as e:
+            log_test("GET /api/bids/{bid_id}/comments - returns comments in chronological order", False, str(e))
+
+# ============ 2. QUOTATIONS ============
+print("\n" + "="*80)
+print("2. TESTING QUOTATIONS")
+print("="*80 + "\n")
+
+# POST /api/quotations with line_items
+quote_payload = {
+    "client_name": "John Smith",
+    "title": "Bathroom Renovation Quote",
+    "description": "Full bathroom renovation including tiling, plumbing fixtures, and vanity installation",
+    "line_items": [
+        {"label": "Bathroom tiles supply & install", "qty": 15, "unit_price": 85.0},
+        {"label": "Vanity unit & basin", "qty": 1, "unit_price": 650.0},
+        {"label": "Toilet suite", "qty": 1, "unit_price": 420.0},
+        {"label": "Shower mixer & rail", "qty": 1, "unit_price": 380.0},
+        {"label": "Labour (3 days)", "qty": 3, "unit_price": 450.0}
+    ],
+    "valid_until": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d"),
+    "status": "draft"
+}
+
 try:
-    resp = requests.post(f"{BASE_URL}/feed",
-                        headers={"Authorization": f"Bearer {provider_b_token}"},
-                        json={
-                            "title": "Test Post from Provider B",
-                            "content": "This is a test post to verify feed creation",
-                            "post_type": "news",
-                            "tags": ["test", "automation"]
-                        },
-                        timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "post_id" in data:
-            post_id = data["post_id"]
-            log_test("Feed: POST /feed creates post", True)
+    r = requests.post(f"{BASE_URL}/quotations", json=quote_payload, headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        quote = r.json()
+        quote_id = quote["quote_id"]
+        
+        # Verify auto-computed values
+        expected_subtotal = (15 * 85.0) + 650.0 + 420.0 + 380.0 + (3 * 450.0)  # 3975.0
+        expected_tax = round(expected_subtotal * 0.15, 2)  # 596.25
+        expected_total = round(expected_subtotal + expected_tax, 2)  # 4571.25
+        
+        actual_subtotal = quote.get("subtotal")
+        actual_tax = quote.get("tax")
+        actual_total = quote.get("total")
+        
+        if actual_subtotal == expected_subtotal and actual_tax == expected_tax and actual_total == expected_total:
+            log_test("POST /api/quotations - auto-computes subtotal, tax (15%), total", True, f"Subtotal: ${actual_subtotal}, Tax: ${actual_tax}, Total: ${actual_total}")
         else:
-            log_test("Feed: POST /feed creates post", False, "No post_id")
+            log_test("POST /api/quotations - auto-computes subtotal, tax (15%), total", False, f"Expected: ${expected_subtotal}/${expected_tax}/${expected_total}, Got: ${actual_subtotal}/${actual_tax}/${actual_total}")
     else:
-        log_test("Feed: POST /feed creates post", False, f"Status {resp.status_code}")
+        log_test("POST /api/quotations - auto-computes subtotal, tax (15%), total", False, f"{r.status_code} {r.text}")
+        quote_id = None
 except Exception as e:
-    log_test("Feed: POST /feed creates post", False, str(e))
+    log_test("POST /api/quotations - auto-computes subtotal, tax (15%), total", False, str(e))
+    quote_id = None
 
-# 6.4 POST /feed/{post_id}/like (toggle like)
-if post_id:
+# GET /api/quotations/mine
+try:
+    r = requests.get(f"{BASE_URL}/quotations/mine", headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        quotes = r.json()
+        if len(quotes) > 0 and any(q["quote_id"] == quote_id for q in quotes):
+            log_test("GET /api/quotations/mine - returns provider's quotations", True, f"{len(quotes)} quotations")
+        else:
+            log_test("GET /api/quotations/mine - returns provider's quotations", False, "Created quote not found in list")
+    else:
+        log_test("GET /api/quotations/mine - returns provider's quotations", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/quotations/mine - returns provider's quotations", False, str(e))
+
+# PATCH /api/quotations/{quote_id} - update status to "sent"
+if quote_id:
     try:
-        resp = requests.post(f"{BASE_URL}/feed/{post_id}/like",
-                            headers={"Authorization": f"Bearer {customer_a_token}"},
-                            timeout=10)
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            if "likes" in data and "liked" in data:
-                log_test("Feed: POST /feed/{id}/like toggles like", True)
+        r = requests.patch(f"{BASE_URL}/quotations/{quote_id}", json={"status": "sent"}, headers=provider_headers, timeout=10)
+        if r.status_code == 200:
+            updated_quote = r.json()
+            if updated_quote.get("status") == "sent":
+                log_test("PATCH /api/quotations/{quote_id} - update status to 'sent'", True)
             else:
-                log_test("Feed: POST /feed/{id}/like toggles like", False, "Missing likes or liked")
+                log_test("PATCH /api/quotations/{quote_id} - update status to 'sent'", False, f"Status: {updated_quote.get('status')}")
         else:
-            log_test("Feed: POST /feed/{id}/like toggles like", False, f"Status {resp.status_code}")
+            log_test("PATCH /api/quotations/{quote_id} - update status to 'sent'", False, f"{r.status_code}")
     except Exception as e:
-        log_test("Feed: POST /feed/{id}/like toggles like", False, str(e))
+        log_test("PATCH /api/quotations/{quote_id} - update status to 'sent'", False, str(e))
 
-# ============================================================================
-# 7. PROPERTIES TESTS (MEDIUM PRIORITY)
-# ============================================================================
-print("\n🏠 TESTING PROPERTIES ENDPOINTS\n")
-
-property_id = None
-
-# 7.1 POST /properties
+# DELETE /api/quotations/{quote_id}
+# Create a new quote to delete
+delete_quote_payload = {
+    "client_name": "Test Delete",
+    "title": "Test Quote",
+    "line_items": [{"label": "Test", "qty": 1, "unit_price": 100.0}]
+}
 try:
-    resp = requests.post(f"{BASE_URL}/properties",
-                        headers={"Authorization": f"Bearer {customer_a_token}"},
-                        json={
-                            "address": "1 Test Rd, Auckland",
-                            "property_type": "residential",
-                            "bedrooms": 3
-                        },
-                        timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "property_id" in data:
-            property_id = data["property_id"]
-            log_test("Properties: POST /properties creates property", True)
+    r = requests.post(f"{BASE_URL}/quotations", json=delete_quote_payload, headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        delete_quote_id = r.json()["quote_id"]
+        r2 = requests.delete(f"{BASE_URL}/quotations/{delete_quote_id}", headers=provider_headers, timeout=10)
+        if r2.status_code == 200:
+            # Verify it's deleted
+            r3 = requests.get(f"{BASE_URL}/quotations/mine", headers=provider_headers, timeout=10)
+            if r3.status_code == 200:
+                quotes = r3.json()
+                if not any(q["quote_id"] == delete_quote_id for q in quotes):
+                    log_test("DELETE /api/quotations/{quote_id} - deletes quotation", True)
+                else:
+                    log_test("DELETE /api/quotations/{quote_id} - deletes quotation", False, "Quote still exists after delete")
         else:
-            log_test("Properties: POST /properties creates property", False, "No property_id")
+            log_test("DELETE /api/quotations/{quote_id} - deletes quotation", False, f"{r2.status_code}")
     else:
-        log_test("Properties: POST /properties creates property", False, f"Status {resp.status_code}")
+        log_test("DELETE /api/quotations/{quote_id} - deletes quotation", False, "Failed to create quote for deletion")
 except Exception as e:
-    log_test("Properties: POST /properties creates property", False, str(e))
+    log_test("DELETE /api/quotations/{quote_id} - deletes quotation", False, str(e))
 
-# 7.2 GET /properties/mine
+# ============ 3. TEAM MEMBERS ============
+print("\n" + "="*80)
+print("3. TESTING TEAM MEMBERS")
+print("="*80 + "\n")
+
+# POST /api/team
+team_payload = {
+    "name": "Mike Johnson",
+    "role": "Plumber",
+    "phone": "021-555-9999",
+    "email": "mike@testprovider.nz",
+    "hourly_rate": 55.0,
+    "skills": ["residential plumbing", "gas fitting", "drainage"]
+}
+
 try:
-    resp = requests.get(f"{BASE_URL}/properties/mine",
-                       headers={"Authorization": f"Bearer {customer_a_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            found = any(p.get("property_id") == property_id for p in data)
-            if found:
-                log_test("Properties: GET /properties/mine returns property", True)
-            else:
-                log_test("Properties: GET /properties/mine returns property", False, "Property not found")
+    r = requests.post(f"{BASE_URL}/team", json=team_payload, headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        member = r.json()
+        member_id = member["member_id"]
+        # Verify all fields
+        has_name = member.get("name") == "Mike Johnson"
+        has_role = member.get("role") == "Plumber"
+        has_rate = member.get("hourly_rate") == 55.0
+        has_skills = len(member.get("skills", [])) == 3
+        
+        if all([has_name, has_role, has_rate, has_skills]):
+            log_test("POST /api/team - creates team member with all fields", True, f"Member ID: {member_id}")
         else:
-            log_test("Properties: GET /properties/mine returns property", False, "Empty response")
+            log_test("POST /api/team - creates team member with all fields", False, "Some fields missing or incorrect")
     else:
-        log_test("Properties: GET /properties/mine returns property", False, f"Status {resp.status_code}")
+        log_test("POST /api/team - creates team member with all fields", False, f"{r.status_code} {r.text}")
+        member_id = None
 except Exception as e:
-    log_test("Properties: GET /properties/mine returns property", False, str(e))
+    log_test("POST /api/team - creates team member with all fields", False, str(e))
+    member_id = None
 
-# 7.3 DELETE /properties/{property_id}
-if property_id:
+# GET /api/team
+try:
+    r = requests.get(f"{BASE_URL}/team", headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        team = r.json()
+        if len(team) > 0 and any(m["member_id"] == member_id for m in team):
+            log_test("GET /api/team - returns team members", True, f"{len(team)} members")
+        else:
+            log_test("GET /api/team - returns team members", False, "Created member not found")
+    else:
+        log_test("GET /api/team - returns team members", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/team - returns team members", False, str(e))
+
+# PATCH /api/team/{member_id} - update status
+if member_id:
     try:
-        resp = requests.delete(f"{BASE_URL}/properties/{property_id}",
-                              headers={"Authorization": f"Bearer {customer_a_token}"},
-                              timeout=10)
-        
-        if resp.status_code == 200:
-            log_test("Properties: DELETE /properties/{id} deletes property", True)
-        else:
-            log_test("Properties: DELETE /properties/{id} deletes property", False, f"Status {resp.status_code}")
-    except Exception as e:
-        log_test("Properties: DELETE /properties/{id} deletes property", False, str(e))
-
-# ============================================================================
-# 8. PROVIDERS TESTS (MEDIUM PRIORITY)
-# ============================================================================
-print("\n👷 TESTING PROVIDERS ENDPOINTS\n")
-
-# 8.1 GET /providers/nearby (should return 9+ seeded providers)
-try:
-    resp = requests.get(f"{BASE_URL}/providers/nearby", timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) >= 9:
-            # Check if providers have lat/lng
-            has_coords = all("latitude" in p and "longitude" in p for p in data)
-            if has_coords:
-                log_test("Providers: GET /providers/nearby returns 9+ with lat/lng", True)
+        r = requests.patch(f"{BASE_URL}/team/{member_id}", json={"status": "on_job"}, headers=provider_headers, timeout=10)
+        if r.status_code == 200:
+            updated_member = r.json()
+            if updated_member.get("status") == "on_job":
+                log_test("PATCH /api/team/{member_id} - updates status", True)
             else:
-                log_test("Providers: GET /providers/nearby returns 9+ with lat/lng", False, "Missing coordinates")
+                log_test("PATCH /api/team/{member_id} - updates status", False, f"Status: {updated_member.get('status')}")
         else:
-            log_test("Providers: GET /providers/nearby returns 9+ with lat/lng", False, f"Only {len(data)} providers")
-    else:
-        log_test("Providers: GET /providers/nearby returns 9+ with lat/lng", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Providers: GET /providers/nearby returns 9+ with lat/lng", False, str(e))
+            log_test("PATCH /api/team/{member_id} - updates status", False, f"{r.status_code}")
+    except Exception as e:
+        log_test("PATCH /api/team/{member_id} - updates status", False, str(e))
 
-# 8.2 GET /providers/nearby?category=plumbing
+# DELETE /api/team/{member_id}
+# Create another member to delete
+delete_member_payload = {"name": "Test Delete", "role": "Worker"}
 try:
-    resp = requests.get(f"{BASE_URL}/providers/nearby?category=plumbing", timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0:
-            # Check if all have plumbing in categories
-            all_plumbing = all("plumbing" in p.get("categories", []) for p in data)
+    r = requests.post(f"{BASE_URL}/team", json=delete_member_payload, headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        delete_member_id = r.json()["member_id"]
+        r2 = requests.delete(f"{BASE_URL}/team/{delete_member_id}", headers=provider_headers, timeout=10)
+        if r2.status_code == 200:
+            # Verify deleted
+            r3 = requests.get(f"{BASE_URL}/team", headers=provider_headers, timeout=10)
+            if r3.status_code == 200:
+                team = r3.json()
+                if not any(m["member_id"] == delete_member_id for m in team):
+                    log_test("DELETE /api/team/{member_id} - deletes member", True)
+                else:
+                    log_test("DELETE /api/team/{member_id} - deletes member", False, "Member still exists")
+        else:
+            log_test("DELETE /api/team/{member_id} - deletes member", False, f"{r2.status_code}")
+    else:
+        log_test("DELETE /api/team/{member_id} - deletes member", False, "Failed to create member for deletion")
+except Exception as e:
+    log_test("DELETE /api/team/{member_id} - deletes member", False, str(e))
+
+# ============ 4. TRADES BOARD ============
+print("\n" + "="*80)
+print("4. TESTING TRADES BOARD")
+print("="*80 + "\n")
+
+# POST /api/trades-board
+trade_job_payload = {
+    "title": "Need a sparky for commercial fit-out",
+    "description": "Looking for a qualified electrician to help with a commercial office fit-out in Auckland CBD. 3-day job, good rates.",
+    "trade": "electrician",
+    "budget": 2500.0,
+    "urgency": "this_week"
+}
+
+try:
+    r = requests.post(f"{BASE_URL}/trades-board", json=trade_job_payload, headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        trade_job = r.json()
+        trade_job_id = trade_job["trade_job_id"]
+        log_test("POST /api/trades-board - creates trade job", True, f"Trade job ID: {trade_job_id}")
+    else:
+        log_test("POST /api/trades-board - creates trade job", False, f"{r.status_code} {r.text}")
+except Exception as e:
+    log_test("POST /api/trades-board - creates trade job", False, str(e))
+
+# GET /api/trades-board
+try:
+    r = requests.get(f"{BASE_URL}/trades-board", headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        trade_jobs = r.json()
+        if len(trade_jobs) > 0:
+            log_test("GET /api/trades-board - returns trade jobs", True, f"{len(trade_jobs)} jobs")
+        else:
+            log_test("GET /api/trades-board - returns trade jobs", False, "No trade jobs found")
+    else:
+        log_test("GET /api/trades-board - returns trade jobs", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/trades-board - returns trade jobs", False, str(e))
+
+# ============ 5. EXTERNAL JOBS ============
+print("\n" + "="*80)
+print("5. TESTING EXTERNAL JOBS")
+print("="*80 + "\n")
+
+# GET /api/external-jobs - should return >=6 seeded partner leads
+try:
+    r = requests.get(f"{BASE_URL}/external-jobs", headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        external_jobs = r.json()
+        if len(external_jobs) >= 6:
+            # Verify they have required fields
+            sample = external_jobs[0]
+            has_source = "source" in sample
+            has_title = "title" in sample
+            has_category = "category" in sample
+            
+            if all([has_source, has_title, has_category]):
+                log_test("GET /api/external-jobs - returns >=6 seeded partner leads", True, f"{len(external_jobs)} leads")
+            else:
+                log_test("GET /api/external-jobs - returns >=6 seeded partner leads", False, "Missing required fields")
+        else:
+            log_test("GET /api/external-jobs - returns >=6 seeded partner leads", False, f"Only {len(external_jobs)} leads found")
+    else:
+        log_test("GET /api/external-jobs - returns >=6 seeded partner leads", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/external-jobs - returns >=6 seeded partner leads", False, str(e))
+
+# ============ 6. GPS DEVICES ============
+print("\n" + "="*80)
+print("6. TESTING GPS DEVICES")
+print("="*80 + "\n")
+
+# POST /api/gps-devices
+gps_payload = {
+    "name": "Van #1 GPS Tracker",
+    "assigned_to": member_id if member_id else None
+}
+
+try:
+    r = requests.post(f"{BASE_URL}/gps-devices", json=gps_payload, headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        device = r.json()
+        device_id = device["device_id"]
+        log_test("POST /api/gps-devices - creates GPS device", True, f"Device ID: {device_id}")
+    else:
+        log_test("POST /api/gps-devices - creates GPS device", False, f"{r.status_code} {r.text}")
+except Exception as e:
+    log_test("POST /api/gps-devices - creates GPS device", False, str(e))
+
+# GET /api/gps-devices
+try:
+    r = requests.get(f"{BASE_URL}/gps-devices", headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        devices = r.json()
+        if len(devices) > 0:
+            log_test("GET /api/gps-devices - returns GPS devices", True, f"{len(devices)} devices")
+        else:
+            log_test("GET /api/gps-devices - returns GPS devices", False, "No devices found")
+    else:
+        log_test("GET /api/gps-devices - returns GPS devices", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/gps-devices - returns GPS devices", False, str(e))
+
+# ============ 7. MEMBERSHIP ============
+print("\n" + "="*80)
+print("7. TESTING MEMBERSHIP")
+print("="*80 + "\n")
+
+# GET /api/membership/plans - should return 4 plans
+try:
+    r = requests.get(f"{BASE_URL}/membership/plans", timeout=10)
+    if r.status_code == 200:
+        plans = r.json()
+        if len(plans) == 4:
+            # Verify plan IDs
+            plan_ids = [p["id"] for p in plans]
+            expected_ids = ["free", "starter", "pro", "enterprise"]
+            if all(pid in plan_ids for pid in expected_ids):
+                log_test("GET /api/membership/plans - returns 4 plans (free, starter, pro, enterprise)", True)
+            else:
+                log_test("GET /api/membership/plans - returns 4 plans (free, starter, pro, enterprise)", False, f"Plan IDs: {plan_ids}")
+        else:
+            log_test("GET /api/membership/plans - returns 4 plans (free, starter, pro, enterprise)", False, f"Found {len(plans)} plans")
+    else:
+        log_test("GET /api/membership/plans - returns 4 plans (free, starter, pro, enterprise)", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/membership/plans - returns 4 plans (free, starter, pro, enterprise)", False, str(e))
+
+# GET /api/membership/mine - returns current plan
+try:
+    r = requests.get(f"{BASE_URL}/membership/mine", headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        membership = r.json()
+        if "plan" in membership:
+            log_test("GET /api/membership/mine - returns current plan", True, f"Plan: {membership['plan']['id']}")
+        else:
+            log_test("GET /api/membership/mine - returns current plan", False, "No plan field in response")
+    else:
+        log_test("GET /api/membership/mine - returns current plan", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/membership/mine - returns current plan", False, str(e))
+
+# POST /api/membership/subscribe - switch to pro plan
+try:
+    r = requests.post(f"{BASE_URL}/membership/subscribe", json={"plan_id": "pro"}, headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        result = r.json()
+        if result.get("plan", {}).get("id") == "pro":
+            # Verify it persisted
+            r2 = requests.get(f"{BASE_URL}/membership/mine", headers=provider_headers, timeout=10)
+            if r2.status_code == 200:
+                membership = r2.json()
+                if membership.get("plan", {}).get("id") == "pro":
+                    log_test("POST /api/membership/subscribe - switches plan to 'pro'", True)
+                else:
+                    log_test("POST /api/membership/subscribe - switches plan to 'pro'", False, "Plan not persisted")
+        else:
+            log_test("POST /api/membership/subscribe - switches plan to 'pro'", False, f"Plan: {result.get('plan', {}).get('id')}")
+    else:
+        log_test("POST /api/membership/subscribe - switches plan to 'pro'", False, f"{r.status_code}")
+except Exception as e:
+    log_test("POST /api/membership/subscribe - switches plan to 'pro'", False, str(e))
+
+# ============ 8. WARRANTY CLAIMS ============
+print("\n" + "="*80)
+print("8. TESTING WARRANTY CLAIMS")
+print("="*80 + "\n")
+
+# POST /api/warranty-claims
+claim_payload = {
+    "subject": "Leaking tap after installation",
+    "description": "The kitchen tap installed 3 months ago has started leaking from the base. Water is pooling under the sink.",
+    "provider_name": "Test Provider Services"
+}
+
+try:
+    r = requests.post(f"{BASE_URL}/warranty-claims", json=claim_payload, headers=customer_headers, timeout=10)
+    if r.status_code == 200:
+        claim = r.json()
+        claim_id = claim["claim_id"]
+        log_test("POST /api/warranty-claims - creates warranty claim", True, f"Claim ID: {claim_id}")
+    else:
+        log_test("POST /api/warranty-claims - creates warranty claim", False, f"{r.status_code} {r.text}")
+except Exception as e:
+    log_test("POST /api/warranty-claims - creates warranty claim", False, str(e))
+
+# GET /api/warranty-claims/mine
+try:
+    r = requests.get(f"{BASE_URL}/warranty-claims/mine", headers=customer_headers, timeout=10)
+    if r.status_code == 200:
+        claims = r.json()
+        if len(claims) > 0:
+            log_test("GET /api/warranty-claims/mine - returns user's claims", True, f"{len(claims)} claims")
+        else:
+            log_test("GET /api/warranty-claims/mine - returns user's claims", False, "No claims found")
+    else:
+        log_test("GET /api/warranty-claims/mine - returns user's claims", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/warranty-claims/mine - returns user's claims", False, str(e))
+
+# ============ 9. REFERRALS ============
+print("\n" + "="*80)
+print("9. TESTING REFERRALS")
+print("="*80 + "\n")
+
+# GET /api/referrals/mine - should return incoming, outgoing, invite_code, reward_per_signup
+try:
+    r = requests.get(f"{BASE_URL}/referrals/mine", headers=provider_headers, timeout=10)
+    if r.status_code == 200:
+        referrals = r.json()
+        has_incoming = "incoming" in referrals
+        has_outgoing = "outgoing" in referrals
+        has_code = "invite_code" in referrals
+        has_reward = referrals.get("reward_per_signup") == 25
+        
+        if all([has_incoming, has_outgoing, has_code, has_reward]):
+            log_test("GET /api/referrals/mine - returns {incoming, outgoing, invite_code, reward_per_signup:25}", True, f"Invite code: {referrals['invite_code']}")
+        else:
+            missing = []
+            if not has_incoming: missing.append("incoming")
+            if not has_outgoing: missing.append("outgoing")
+            if not has_code: missing.append("invite_code")
+            if not has_reward: missing.append("reward_per_signup")
+            log_test("GET /api/referrals/mine - returns {incoming, outgoing, invite_code, reward_per_signup:25}", False, f"Missing: {missing}")
+    else:
+        log_test("GET /api/referrals/mine - returns {incoming, outgoing, invite_code, reward_per_signup:25}", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/referrals/mine - returns {incoming, outgoing, invite_code, reward_per_signup:25}", False, str(e))
+
+# ============ 10. JOB HISTORY ============
+print("\n" + "="*80)
+print("10. TESTING JOB HISTORY")
+print("="*80 + "\n")
+
+# GET /api/job-history - should return only closed bookings (done, paid, cancelled)
+try:
+    r = requests.get(f"{BASE_URL}/job-history", headers=customer_headers, timeout=10)
+    if r.status_code == 200:
+        history = r.json()
+        # Verify all bookings have status in ["done", "paid", "cancelled"]
+        if len(history) > 0:
+            all_closed = all(b.get("status") in ["done", "paid", "cancelled"] for b in history)
+            if all_closed:
+                log_test("GET /api/job-history - returns closed bookings only", True, f"{len(history)} bookings")
+            else:
+                log_test("GET /api/job-history - returns closed bookings only", False, "Contains non-closed bookings")
+        else:
+            # No history is OK for new user
+            log_test("GET /api/job-history - returns closed bookings only", True, "0 bookings (new user)")
+    else:
+        log_test("GET /api/job-history - returns closed bookings only", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/job-history - returns closed bookings only", False, str(e))
+
+# ============ 11. COST GUIDE ============
+print("\n" + "="*80)
+print("11. TESTING COST GUIDE")
+print("="*80 + "\n")
+
+# GET /api/cost-guide - should return >=15 entries
+try:
+    r = requests.get(f"{BASE_URL}/cost-guide", timeout=10)
+    if r.status_code == 200:
+        guide = r.json()
+        if len(guide) >= 15:
+            # Verify structure
+            sample = guide[0]
+            has_category = "category" in sample
+            has_job = "job" in sample
+            has_low = "low" in sample
+            has_high = "high" in sample
+            has_avg = "avg" in sample
+            has_unit = "unit" in sample
+            
+            if all([has_category, has_job, has_low, has_high, has_avg, has_unit]):
+                log_test("GET /api/cost-guide - returns >=15 entries with {category, job, low, high, avg, unit}", True, f"{len(guide)} entries")
+            else:
+                log_test("GET /api/cost-guide - returns >=15 entries with {category, job, low, high, avg, unit}", False, "Missing required fields")
+        else:
+            log_test("GET /api/cost-guide - returns >=15 entries with {category, job, low, high, avg, unit}", False, f"Only {len(guide)} entries")
+    else:
+        log_test("GET /api/cost-guide - returns >=15 entries with {category, job, low, high, avg, unit}", False, f"{r.status_code}")
+except Exception as e:
+    log_test("GET /api/cost-guide - returns >=15 entries with {category, job, low, high, avg, unit}", False, str(e))
+
+# GET /api/cost-guide?category=Plumbing - test filter
+try:
+    r = requests.get(f"{BASE_URL}/cost-guide?category=Plumbing", timeout=10)
+    if r.status_code == 200:
+        guide = r.json()
+        if len(guide) > 0:
+            # Verify all entries are Plumbing category
+            all_plumbing = all(e.get("category") == "Plumbing" for e in guide)
             if all_plumbing:
-                log_test("Providers: GET /providers/nearby?category=plumbing filters", True)
+                log_test("GET /api/cost-guide?category=Plumbing - filters by category", True, f"{len(guide)} plumbing entries")
             else:
-                log_test("Providers: GET /providers/nearby?category=plumbing filters", False, "Wrong category")
+                log_test("GET /api/cost-guide?category=Plumbing - filters by category", False, "Contains non-Plumbing entries")
         else:
-            log_test("Providers: GET /providers/nearby?category=plumbing filters", False, "Empty response")
+            log_test("GET /api/cost-guide?category=Plumbing - filters by category", False, "No plumbing entries found")
     else:
-        log_test("Providers: GET /providers/nearby?category=plumbing filters", False, f"Status {resp.status_code}")
+        log_test("GET /api/cost-guide?category=Plumbing - filters by category", False, f"{r.status_code}")
 except Exception as e:
-    log_test("Providers: GET /providers/nearby?category=plumbing filters", False, str(e))
+    log_test("GET /api/cost-guide?category=Plumbing - filters by category", False, str(e))
 
-# 8.3 GET /providers/me (as Provider B)
+# ============ 12. TRADE STORE ============
+print("\n" + "="*80)
+print("12. TESTING TRADE STORE")
+print("="*80 + "\n")
+
+# GET /api/products - verify products include unit field, featured boolean, brand
 try:
-    resp = requests.get(f"{BASE_URL}/providers/me",
-                       headers={"Authorization": f"Bearer {provider_b_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if "user_id" in data and data["user_id"] == provider_b_id:
-            log_test("Providers: GET /providers/me returns profile", True)
-        else:
-            log_test("Providers: GET /providers/me returns profile", False, "Wrong user_id")
-    else:
-        log_test("Providers: GET /providers/me returns profile", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Providers: GET /providers/me returns profile", False, str(e))
-
-# 8.4 PATCH /providers/me
-try:
-    resp = requests.patch(f"{BASE_URL}/providers/me",
-                         headers={"Authorization": f"Bearer {provider_b_token}"},
-                         json={
-                             "online": True,
-                             "hourly_rate": 95
-                         },
-                         timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if data.get("online") == True and data.get("hourly_rate") == 95:
-            log_test("Providers: PATCH /providers/me updates profile", True)
-        else:
-            log_test("Providers: PATCH /providers/me updates profile", False, "Values not updated")
-    else:
-        log_test("Providers: PATCH /providers/me updates profile", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Providers: PATCH /providers/me updates profile", False, str(e))
-
-# ============================================================================
-# 9. STATS TESTS (MEDIUM PRIORITY)
-# ============================================================================
-print("\n📊 TESTING STATS ENDPOINTS\n")
-
-# 9.1 GET /stats/customer
-try:
-    resp = requests.get(f"{BASE_URL}/stats/customer",
-                       headers={"Authorization": f"Bearer {customer_a_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        required_fields = ["total_spent", "jobs_done", "active_jobs", "upcoming", "unpaid", "avg_cost"]
-        has_all = all(field in data for field in required_fields)
-        if has_all:
-            log_test("Stats: GET /stats/customer returns all fields", True)
-        else:
-            missing = [f for f in required_fields if f not in data]
-            log_test("Stats: GET /stats/customer returns all fields", False, f"Missing: {missing}")
-    else:
-        log_test("Stats: GET /stats/customer returns all fields", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Stats: GET /stats/customer returns all fields", False, str(e))
-
-# 9.2 GET /stats/provider
-try:
-    resp = requests.get(f"{BASE_URL}/stats/provider",
-                       headers={"Authorization": f"Bearer {provider_b_token}"},
-                       timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        required_fields = ["earnings", "jobs_done", "active_jobs", "pending_bids"]
-        has_all = all(field in data for field in required_fields)
-        if has_all:
-            log_test("Stats: GET /stats/provider returns all fields", True)
-        else:
-            missing = [f for f in required_fields if f not in data]
-            log_test("Stats: GET /stats/provider returns all fields", False, f"Missing: {missing}")
-    else:
-        log_test("Stats: GET /stats/provider returns all fields", False, f"Status {resp.status_code}")
-except Exception as e:
-    log_test("Stats: GET /stats/provider returns all fields", False, str(e))
-
-# ============================================================================
-# 10. CATEGORIES TEST
-# ============================================================================
-print("\n📋 TESTING CATEGORIES ENDPOINT\n")
-
-# 10.1 GET /categories (should return 12 categories)
-try:
-    resp = requests.get(f"{BASE_URL}/categories", timeout=10)
-    
-    if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and len(data) == 12:
-            # Check if each has required fields
-            has_structure = all("id" in c and "name" in c for c in data)
-            if has_structure:
-                log_test("Categories: GET /categories returns 12 category objects", True)
+    r = requests.get(f"{BASE_URL}/products", timeout=10)
+    if r.status_code == 200:
+        products = r.json()
+        if len(products) >= 27:
+            # Check sample product for required fields
+            sample = products[0]
+            has_unit = "unit" in sample
+            has_featured = "featured" in sample
+            has_brand = "brand" in sample
+            
+            # Verify categories
+            categories = set(p.get("category") for p in products)
+            expected_categories = ["Power Tools", "Hand Tools", "Equipment", "Fixings", "Materials", 
+                                 "Plumbing", "Electrical", "Kitsets", "Safety & PPE"]
+            has_categories = any(cat in categories for cat in expected_categories)
+            
+            # Check for various unit types
+            units = set(p.get("unit") for p in products if "unit" in p)
+            expected_units = ["kit", "each", "bag", "kitset", "10pk", "20pk"]
+            has_units = any(unit in units for unit in expected_units)
+            
+            if all([has_unit, has_featured, has_brand, has_categories, has_units]):
+                log_test("GET /api/products - includes unit, featured, brand fields; >=27 products across categories", True, f"{len(products)} products, {len(categories)} categories")
             else:
-                log_test("Categories: GET /categories returns 12 category objects", False, "Missing fields")
+                missing = []
+                if not has_unit: missing.append("unit")
+                if not has_featured: missing.append("featured")
+                if not has_brand: missing.append("brand")
+                if not has_categories: missing.append("expected categories")
+                if not has_units: missing.append("expected units")
+                log_test("GET /api/products - includes unit, featured, brand fields; >=27 products across categories", False, f"Missing: {missing}")
         else:
-            log_test("Categories: GET /categories returns 12 category objects", False, f"Expected 12, got {len(data)}")
+            log_test("GET /api/products - includes unit, featured, brand fields; >=27 products across categories", False, f"Only {len(products)} products")
     else:
-        log_test("Categories: GET /categories returns 12 category objects", False, f"Status {resp.status_code}")
+        log_test("GET /api/products - includes unit, featured, brand fields; >=27 products across categories", False, f"{r.status_code}")
 except Exception as e:
-    log_test("Categories: GET /categories returns 12 category objects", False, str(e))
+    log_test("GET /api/products - includes unit, featured, brand fields; >=27 products across categories", False, str(e))
 
-# ============================================================================
-# PRINT SUMMARY
-# ============================================================================
+# ============ PRINT SUMMARY ============
 print_summary()

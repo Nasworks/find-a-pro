@@ -148,6 +148,147 @@ backend:
           agent: "testing"
           comment: "Full workflow tested successfully: Customer A created job (plumbing, budget 100-300), job appears in /jobs/mine and /jobs/board, Provider B created bid (amount 200, eta 2 days), bid appears in /bids/mine, Customer A accepted bid which created booking automatically. All endpoints working correctly."
   - task: "Bookings status pipeline"
+  - task: "Enhanced Bids: line_items, warranty, docs, T&C, counter/reject/withdraw, comments"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "New endpoints: POST /api/bids (with line_items, terms, documents, warranty_months, payment_terms), POST /api/bids/{id}/counter (creates revision), /reject, /withdraw, GET+POST /api/bids/{id}/comments"
+        - working: true
+          agent: "testing"
+          comment: "All enhanced bid endpoints tested and working: POST /api/bids with full payload (line_items, warranty_months:24, payment_terms, terms, documents) returns all fields correctly. GET /api/jobs/{job_id} includes all enhanced bid fields. POST /api/bids/{bid_id}/counter creates new bid with revision+1 and previous_bid_id set, marks old bid as 'countered'. POST /api/bids/{bid_id}/reject sets status='rejected'. POST /api/bids/{bid_id}/withdraw sets status='withdrawn'. POST /api/bids/{bid_id}/comments creates comments. GET /api/bids/{bid_id}/comments returns comments in chronological order. 9/9 tests passed."
+  - task: "Quotations CRUD"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "POST /api/quotations, GET /api/quotations/mine, PATCH, DELETE. Auto-computes subtotal/tax(15% GST)/total."
+        - working: true
+          agent: "testing"
+          comment: "All quotation endpoints working: POST /api/quotations with line_items correctly auto-computes subtotal ($3975), tax (15% = $596.25), and total ($4571.25). GET /api/quotations/mine returns provider's quotations. PATCH /api/quotations/{quote_id} successfully updates status to 'sent'. DELETE /api/quotations/{quote_id} deletes quotation. 4/4 tests passed."
+  - task: "Team members"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "POST/GET/PATCH/DELETE /api/team"
+        - working: true
+          agent: "testing"
+          comment: "All team member endpoints working: POST /api/team creates member with all fields (name, role, phone, email, hourly_rate, skills). GET /api/team returns team members. PATCH /api/team/{member_id} updates status. DELETE /api/team/{member_id} deletes member. 4/4 tests passed."
+  - task: "Trades Board (provider-to-provider)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "POST/GET /api/trades-board"
+        - working: true
+          agent: "testing"
+          comment: "Trades board endpoints working: POST /api/trades-board creates trade job with title, description, trade, budget, urgency. GET /api/trades-board returns trade jobs. 2/2 tests passed."
+  - task: "External Jobs (partner leads)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "GET /api/external-jobs returns 6 seeded leads across Builderscrack/NoCowboys/Neighbourly/TradeMe"
+        - working: true
+          agent: "testing"
+          comment: "External jobs endpoint working: GET /api/external-jobs returns 6 seeded partner leads with source, title, category fields. 1/1 test passed."
+  - task: "GPS Devices"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "GET/POST /api/gps-devices"
+        - working: true
+          agent: "testing"
+          comment: "GPS device endpoints working: POST /api/gps-devices creates device with name and assigned_to. GET /api/gps-devices returns devices. 2/2 tests passed."
+  - task: "Membership plans"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "GET /api/membership/plans (4 tiers), /mine, POST /subscribe"
+        - working: true
+          agent: "testing"
+          comment: "Membership endpoints working: GET /api/membership/plans returns 4 plans (free, starter, pro, enterprise). GET /api/membership/mine returns current plan. POST /api/membership/subscribe successfully switches plan to 'pro' and persists. 3/3 tests passed."
+  - task: "Warranty Claims"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "POST /api/warranty-claims, GET /warranty-claims/mine"
+        - working: true
+          agent: "testing"
+          comment: "Warranty claims endpoints working: POST /api/warranty-claims creates claim with subject, description, provider_name. GET /api/warranty-claims/mine returns user's claims. 2/2 tests passed."
+  - task: "Referrals / Job History / Cost Guide"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "GET /api/referrals/mine (with invite code), /job-history (closed bookings), /cost-guide (15 categories)"
+        - working: true
+          agent: "testing"
+          comment: "All endpoints working: GET /api/referrals/mine returns {incoming, outgoing, invite_code, reward_per_signup:25}. GET /api/job-history returns only closed bookings (done/paid/cancelled). GET /api/cost-guide returns 15 entries with {category, job, low, high, avg, unit}. GET /api/cost-guide?category=Plumbing filters correctly. 4/4 tests passed."
+  - task: "Trade Store products refresh (Trade Supply Co.)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "main"
+          comment: "27 seeded products with brand, unit (kit/each/bag/kitset/10pk/etc), featured flag, +GST pricing. Categories: Power Tools, Hand Tools, Equipment, Fixings, Materials, Plumbing, Electrical, Kitsets, Safety & PPE."
+        - working: true
+          agent: "testing"
+          comment: "Trade Store working: GET /api/products returns 27+ products with unit field (kit, each, bag, kitset, 10pk, 20pk, etc), featured boolean, brand field. Products span all expected categories: Power Tools, Hand Tools, Equipment, Fixings, Materials, Plumbing, Electrical, Kitsets, Safety & PPE. 1/1 test passed."
+
     implemented: true
     working: true
     file: "backend/server.py"
@@ -323,7 +464,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: false
 
 test_plan:
@@ -335,6 +476,11 @@ test_plan:
 agent_communication:
     - agent: "main"
       message: "Dispatchr full-stack MVP complete. Backend: FastAPI+Motor with seed products, providers, feed. Frontend: React + Tailwind + shadcn + Leaflet, 4-role sidebar, ~20 pages. Auth: JWT email/password + Emergent Google OAuth (session cookie flow). Please test all backend endpoints. Demo customer/provider accounts: emails ending in @dispatchr.demo with password demo1234 (created via seed for providers). A fresh signup with role=customer works end-to-end."
+    - agent: "main"
+      message: "Phase 2 additions: Complex bidding structure (bid line items, warranty months, payment terms, documents, comments/discussion thread per bid, counter-offers/revisions with previous_bid_id tracking, reject/withdraw). New provider modules: Quotations CRUD, Team, Trades Board, External Jobs (seeded), Track Workers (Leaflet), GPS Devices, Job History, Referrals, Membership plans (4 tiers), Warranty Claims. Rebuilt Trade Store as 'Trade Supply Co.' with 27 seeded products, brands, /unit pricing, +GST, TRADE badges, featured section, and category pills (Power Tools, Hand Tools, Equipment, Fixings, Materials, Plumbing, Electrical, Kitsets, Safety & PPE). Cost Guide endpoint added. New backend endpoints: /api/bids/{id}/counter, /reject, /withdraw, /comments, /api/quotations*, /api/team*, /api/trades-board, /api/external-jobs, /api/gps-devices, /api/membership/{plans,mine,subscribe}, /api/warranty-claims, /api/referrals/mine, /api/job-history, /api/cost-guide."
     - agent: "testing"
       message: "Backend testing complete. Ran 44 comprehensive API tests covering all endpoints. FOUND AND FIXED 1 CRITICAL BUG: Messages endpoints (POST /api/threads, POST /api/messages) had MongoDB ObjectId serialization issue causing 500 errors. Fixed by removing _id field after insert operations. ALL 44 TESTS NOW PASS (100% success rate). All backend functionality verified working: Auth (register, login, /me, role switch), Jobs/Bids/Bookings full workflow, Messages (threads + send), Marketplace (20+ products, orders with correct totals), Feed (6+ posts, filtering, likes), Properties (CRUD), Providers (9+ with lat/lng, filtering), Stats (customer & provider dashboards), Categories (12 objects). Google OAuth session exchange not tested (requires browser flow). Backend is production-ready."
+    - agent: "testing"
+      message: "Phase 2 backend testing complete. Ran 32 comprehensive tests on all newly added endpoints with fresh provider + customer accounts. ALL 32 TESTS PASSED (100% success rate). Verified: (1) Enhanced Bids - full payload with line_items, warranty_months, payment_terms, terms, documents; counter-offers create new bid with revision+1 and previous_bid_id; reject/withdraw status changes; comments in chronological order. (2) Quotations - auto-computes subtotal, 15% tax, total; CRUD operations work. (3) Team - POST/GET/PATCH/DELETE all working. (4) Trades Board - POST/GET working. (5) External Jobs - returns 6 seeded partner leads. (6) GPS Devices - POST/GET working. (7) Membership - 4 plans (free/starter/pro/enterprise), subscribe switches plan. (8) Warranty Claims - POST/GET working. (9) Referrals - returns incoming/outgoing/invite_code/reward_per_signup:25. (10) Job History - returns only closed bookings. (11) Cost Guide - 15+ entries with category filter. (12) Trade Store - 27+ products with unit/featured/brand fields across all categories. All Phase 2 backend features production-ready."
+
 
