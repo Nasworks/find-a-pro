@@ -129,9 +129,10 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const nav = roleNav[user?.role] || clientNav;
+  const [switchOpen, setSwitchOpen] = React.useState(false);
 
   const handleSwitchRole = async (roleId) => {
-    if (roleId === user.role) return;
+    if (roleId === user.role) { setSwitchOpen(false); return; }
     try {
       await switchRole(roleId);
       toast.success(`Switched to ${roleId}`);
@@ -141,6 +142,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         : roleId === 'facilities' ? '/facilities/dashboard'
         : roleId === 'insurance' ? '/insurance/dashboard'
         : '/client-home';
+      setSwitchOpen(false);
       navigate(target);
     } catch { toast.error('Failed to switch role'); }
   };
@@ -182,7 +184,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
       </nav>
 
       <div className="border-t border-border p-2 space-y-1">
-        <Dialog>
+        <Dialog open={switchOpen} onOpenChange={setSwitchOpen}>
           <DialogTrigger asChild>
             <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               <Repeat className="w-4 h-4 shrink-0" />
