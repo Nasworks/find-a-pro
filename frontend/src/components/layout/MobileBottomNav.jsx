@@ -51,11 +51,13 @@ export default function MobileBottomNav() {
   const { user } = useAuth();
   const tabs = roleTabs[user?.role] || roleTabs.customer;
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const totalCells = tabs.length + 1; // + More button
+  const gridColsClass = { 3: 'grid-cols-3', 4: 'grid-cols-4', 5: 'grid-cols-5', 6: 'grid-cols-6' }[totalCells] || 'grid-cols-6';
 
   return (
     <>
       <nav data-testid="mobile-bottom-nav" className="fixed bottom-0 inset-x-0 z-40 bg-card/95 backdrop-blur border-t border-border">
-        <div className="grid grid-cols-6 h-16 max-w-md mx-auto">
+        <div className={`grid ${gridColsClass} h-16 max-w-md mx-auto`}>
           {tabs.map((t) => {
             const Icon = t.icon;
             return (

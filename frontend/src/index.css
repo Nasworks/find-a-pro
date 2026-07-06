@@ -154,3 +154,27 @@ code {
 .mobile-viewport-inner .lg\:grid-cols-\[240px_1fr\] { grid-template-columns: 1fr !important; }
 .mobile-viewport-inner aside.hidden.lg\:block { display: none !important; }
 
+/* Constrain dialogs, sheets, and popovers portalled to body when in mobile view mode.
+   Radix portals to document.body, so parent .mobile-viewport-inner CSS cannot reach them. */
+html[data-view-mode="mobile"] [role="dialog"]:not([data-state="closed"]) {
+  max-width: min(430px, calc(100vw - 16px)) !important;
+  width: calc(100vw - 16px) !important;
+}
+@media (min-width: 768px) {
+  html[data-view-mode="mobile"] [role="dialog"]:not([data-state="closed"]) {
+    max-width: 400px !important;
+    width: 400px !important;
+  }
+  /* Sheets stay full-width but capped */
+  html[data-view-mode="mobile"] [data-radix-popper-content-wrapper] {
+    max-width: 400px !important;
+  }
+}
+/* Dropdown/select content should also feel mobile */
+html[data-view-mode="mobile"] [role="listbox"],
+html[data-view-mode="mobile"] [data-radix-select-content],
+html[data-view-mode="mobile"] [data-radix-dropdown-menu-content] {
+  max-width: min(400px, calc(100vw - 16px)) !important;
+}
+
+

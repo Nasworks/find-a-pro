@@ -22,9 +22,18 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
 ## What's Implemented (2026-02-06)
-- ✅ **Auth**: cookie-based JWT (httpOnly), role switching, 6 roles supported (customer, provider, property, insurance, landlord, facilities)
-- ✅ **Jobs & Bids**: complex bidding (price, line items, docs, T&C, threaded comments), all CRUD wired
-- ✅ **Job Model expanded (2026-02-06)**: `subcategory` (string) + `service_type` ('residential'|'commercial') fields added. POST /api/jobs validates service_type + rejects unknown subcategory; legacy short-form categories still accepted.
+- ✅ **Desktop / Mobile View Mode Toggle (2026-02-06)**:
+  - `ViewModeContext` — persisted `dispatchr_view_mode` in localStorage, lazy-initialized, auto-detects mobile if browser width < 768px on first visit
+  - `ViewModeToggle` button in TopBar (desktop), MobileTopBar, Landing header, and Sidebar footer (data-testid `view-mode-toggle`, `sidebar-view-mode-toggle`)
+  - Desktop mode: unchanged (Sidebar + TopBar + full-width main)
+  - Mobile mode: phone-frame shell (max 430px wide, centered, subtle drop shadow + rounded 40px on desktop screens ≥768px; full-width on real mobile browsers)
+  - `MobileTopBar` — hamburger menu opens Sidebar in a left Sheet drawer that closes on nav
+  - `MobileBottomNav` — role-aware 5-tab nav (Home/Jobs/Post/Chat/Shop for customer; different mapping per role) + More sheet with quick links; dynamic grid columns match tab count (`grid-cols-4` for insurance which has 3 tabs)
+  - CSS overrides in `index.css` clamp all `max-w-{7xl,6xl,4xl,2xl}` to 100%, hide `.hidden.lg:block` asides, and constrain Radix Dialog/Sheet/Popover portals to 400px when `html[data-view-mode="mobile"]`
+  - `ServicePicker` detects `isMobile` internally: browse view uses horizontal scrollable category tabs + full-width subcategory list on mobile; keeps 240px sidebar + 2-col grid on desktop
+  - Verified working on: Landing, Login, Signup, all role dashboards, PostJob (with ServicePicker), Community Forum + Post Detail, Marketplace, Provider Trade Store, all sidebar routes
+- ✅ **Auth**: cookie-based JWT (httpOnly), role switching, 6 roles (customer, provider, property, insurance, landlord, facilities)
+- ✅ **Jobs & Bids**: complex bidding + subcategory + service_type validation
 - ✅ **Service Taxonomies (2026-02-06)**:
   - Residential: **18 categories, 122 subcategories** (General Home Maintenance, Electrical, Plumbing & Gas, Heating/Cooling/Ventilation, Roofing & Guttering, Carpentry & Joinery, Painting & Interior Finishes, Flooring & Tiling, Kitchens/Bathrooms/Renovations, Concrete & Outdoor Construction, Glass & Windows, Security & Smart Home, Data & Communications, Solar & Energy, Pools/Spas/Outdoor Living, Insulation & Weatherproofing, Appliance Installation, Specialist Home Services)
   - Commercial: **15 categories, 102 subcategories** (Building Maintenance, Electrical, Plumbing & Gas, HVAC & Mechanical, Roofing & Waterproofing, Carpentry & Joinery, Interior Finishes, Exterior Works, Glass & Aluminium, Fire Protection, Security Systems, Data & Communications, Building Automation, Renewable Energy, Commercial Renovations & Fit-outs)

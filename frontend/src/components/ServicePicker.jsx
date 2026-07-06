@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import api from '../lib/api';
+import { useViewMode } from '../context/ViewModeContext';
 
 /**
  * ServicePicker
@@ -23,6 +24,7 @@ export default function ServicePicker({ open, onOpenChange, serviceType = 'resid
   const [activeCat, setActiveCat] = useState(null);
   const [q, setQ] = useState('');
   const [meta, setMeta] = useState({ total_categories: 0, total_subcategories: 0 });
+  const { isMobile } = useViewMode();
 
   const isCommercial = serviceType === 'commercial';
 
@@ -147,9 +149,11 @@ export default function ServicePicker({ open, onOpenChange, serviceType = 'resid
             )}
           </div>
         ) : (
-          /* TWO-PANEL BROWSE VIEW */
-          <div className="grid grid-cols-[240px_1fr] overflow-hidden max-h-[60vh]">
-            <div className="border-r border-border overflow-y-auto bg-muted/20">
+          /* BROWSE VIEW — stacks on mobile, 2-panel on desktop */
+          <div className={isMobile ? 'flex flex-col overflow-hidden max-h-[65vh]' : 'grid grid-cols-[240px_1fr] overflow-hidden max-h-[60vh]'}>
+            <div className={isMobile
+              ? 'border-b border-border overflow-x-auto bg-muted/20 flex shrink-0'
+              : 'border-r border-border overflow-y-auto bg-muted/20'}>
               {categories.map((c) => {
                 const active = activeCat?.id === c.id;
                 return (
@@ -157,10 +161,12 @@ export default function ServicePicker({ open, onOpenChange, serviceType = 'resid
                     key={c.id}
                     data-testid={`service-picker-cat-${c.id}`}
                     onClick={() => setActiveCat(c)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors border-l-2 ${active ? 'bg-background border-l-primary text-foreground font-semibold' : 'border-l-transparent text-muted-foreground hover:text-foreground hover:bg-background/60'}`}
+                    className={isMobile
+                      ? `flex items-center gap-2 px-3 py-2 text-sm shrink-0 whitespace-nowrap border-b-2 transition-colors ${active ? 'text-foreground font-semibold border-b-primary bg-background' : 'text-muted-foreground border-b-transparent hover:text-foreground'}`
+                      : `w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors border-l-2 ${active ? 'bg-background border-l-primary text-foreground font-semibold' : 'border-l-transparent text-muted-foreground hover:text-foreground hover:bg-background/60'}`}
                   >
                     <CategoryIconChip icon={c.icon} color={c.color} small />
-                    <span className="flex-1 truncate">{c.name}</span>
+                    <span className={isMobile ? '' : 'flex-1 truncate'}>{c.name}</span>
                     {value?.category_id === c.id && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
                   </button>
                 );
@@ -177,7 +183,7 @@ export default function ServicePicker({ open, onOpenChange, serviceType = 'resid
                       <div className="text-xs text-muted-foreground">{activeCat.subcategories.length} services</div>
                     </div>
                   </div>
-                  <div className="grid sm:grid-cols-2 gap-1.5">
+                  <div className={isMobile ? 'grid grid-cols-1 gap-1.5' : 'grid grid-cols-2 gap-1.5'}>
                     {activeCat.subcategories.map((s) => {
                       const selected = value?.category_id === activeCat.id && value?.subcategory_id === s.id;
                       return (
