@@ -548,6 +548,22 @@ async def switch_role(request: Request, user=Depends(require_user)):
 # ---------------- JOBS ----------------
 @api.post("/jobs")
 async def create_job(payload: JobCreate, user=Depends(require_user)):
+    # Validate service_type
+    if payload.service_type not in ("residential", "commercial"):
+        raise HTTPException(status_code=400, detail="service_type must be 'residential' or 'commercial'")
+    # Validate category (and subcategory if present) against the correct taxonomy —
+    # but stay permissive with legacy short-form categories (from old /api/categories)
+    # so we don't break older flows / bookmarks.
+    idx = COMMERCIAL_TAXONOMY_INDEX if payload.service_type == "commercial" else RESIDENTIAL_TAXONOMY_INDEX
+    known_cats = {k.split("/")[0] for k in idx.keys()}
+    if payload.subcategory:
+        key = f"{payload.category}/{payload.subcategory}"
+        if key not in idx:
+            raise HTTPException(status_code=400, detail=f"Unknown subcategory '{payload.subcategory}' for {payload.service_type} category '{payload.category}'")
+    elif payload.category in known_cats:
+        # category-only — allowed but no subcategory
+        pass
+    # else: legacy short category id (e.g. 'plumbing') — allow silently
     job = JobPost(client_id=user["user_id"], **payload.dict())
     await db.jobs.insert_one(job.dict())
     return job

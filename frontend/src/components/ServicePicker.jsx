@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { ChevronRight, Search, X, Building2, Home, Check, Loader2 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -83,6 +83,7 @@ export default function ServicePicker({ open, onOpenChange, serviceType = 'resid
             {label}
             <Badge className={`ml-1 ${chipCls}`}>{meta.total_categories} categories · {meta.total_subcategories}+ services</Badge>
           </DialogTitle>
+          <DialogDescription className="sr-only">Browse or search {label.toLowerCase()} — pick a category on the left, then a specific service on the right.</DialogDescription>
         </DialogHeader>
 
         {/* Search bar */}

@@ -8,21 +8,21 @@ import ServicePicker from '../../components/ServicePicker';
 import api from '../../lib/api';
 
 const RESIDENTIAL_QUICK = [
-  { label: 'Leaking tap', cat: 'plumbing-gas', sub: 'leak-repairs' },
-  { label: 'Blocked drain', cat: 'plumbing-gas', sub: 'blocked-drains' },
-  { label: 'Heat pump install', cat: 'heating-cooling-ventilation', sub: 'heat-pump-installation' },
-  { label: 'Interior painting', cat: 'painting-interior-finishes', sub: 'interior-painting' },
-  { label: 'Roof repair', cat: 'roofing-guttering', sub: 'roof-repairs' },
-  { label: 'Handyman', cat: 'general-home-maintenance', sub: 'handyman-services' },
+  { label: 'Leaking tap', cat: 'plumbing-gas', sub: 'leak-repairs', name: 'Leak Repairs' },
+  { label: 'Blocked drain', cat: 'plumbing-gas', sub: 'blocked-drains', name: 'Blocked Drains' },
+  { label: 'Heat pump install', cat: 'heating-cooling-ventilation', sub: 'heat-pump-installation', name: 'Heat Pump Installation' },
+  { label: 'Interior painting', cat: 'painting-interior-finishes', sub: 'interior-painting', name: 'Interior Painting' },
+  { label: 'Roof repair', cat: 'roofing-guttering', sub: 'roof-repairs', name: 'Roof Repairs' },
+  { label: 'Handyman', cat: 'general-home-maintenance', sub: 'handyman-services', name: 'Handyman Services' },
 ];
 
 const COMMERCIAL_QUICK = [
-  { label: 'LED retrofit', cat: 'electrical', sub: 'led-retrofits' },
-  { label: 'HVAC service', cat: 'hvac-mechanical', sub: 'commercial-air-conditioning' },
-  { label: 'Roof leak', cat: 'roofing-waterproofing', sub: 'leak-repairs' },
-  { label: 'CCTV install', cat: 'security-systems', sub: 'cctv-installation' },
-  { label: 'Office fit-out', cat: 'renovations-fitouts', sub: 'office-renovations' },
-  { label: 'Handyman', cat: 'building-maintenance', sub: 'commercial-handyman' },
+  { label: 'LED retrofit', cat: 'electrical', sub: 'led-retrofits', name: 'LED Retrofits' },
+  { label: 'HVAC service', cat: 'hvac-mechanical', sub: 'commercial-air-conditioning', name: 'Commercial Air Conditioning' },
+  { label: 'Roof leak', cat: 'roofing-waterproofing', sub: 'leak-repairs', name: 'Leak Repairs' },
+  { label: 'CCTV install', cat: 'security-systems', sub: 'cctv-installation', name: 'CCTV Installation' },
+  { label: 'Office fit-out', cat: 'renovations-fitouts', sub: 'office-renovations', name: 'Office Renovations' },
+  { label: 'Handyman', cat: 'building-maintenance', sub: 'commercial-handyman', name: 'Commercial Handyman' },
 ];
 
 export default function ClientHome() {
@@ -56,7 +56,7 @@ export default function ClientHome() {
         propertyType,
         category: q.cat,
         subcategory: q.sub,
-        subcategory_name: q.label,
+        subcategory_name: q.name,
       },
     });
   };

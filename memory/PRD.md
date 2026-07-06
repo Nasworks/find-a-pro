@@ -24,25 +24,25 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 ## What's Implemented (2026-02-06)
 - ✅ **Auth**: cookie-based JWT (httpOnly), role switching, 6 roles supported (customer, provider, property, insurance, landlord, facilities)
 - ✅ **Jobs & Bids**: complex bidding (price, line items, docs, T&C, threaded comments), all CRUD wired
+- ✅ **Job Model expanded (2026-02-06)**: `subcategory` (string) + `service_type` ('residential'|'commercial') fields added. POST /api/jobs validates service_type + rejects unknown subcategory; legacy short-form categories still accepted.
+- ✅ **Service Taxonomies (2026-02-06)**:
+  - Residential: **18 categories, 122 subcategories** (General Home Maintenance, Electrical, Plumbing & Gas, Heating/Cooling/Ventilation, Roofing & Guttering, Carpentry & Joinery, Painting & Interior Finishes, Flooring & Tiling, Kitchens/Bathrooms/Renovations, Concrete & Outdoor Construction, Glass & Windows, Security & Smart Home, Data & Communications, Solar & Energy, Pools/Spas/Outdoor Living, Insulation & Weatherproofing, Appliance Installation, Specialist Home Services)
+  - Commercial: **15 categories, 102 subcategories** (Building Maintenance, Electrical, Plumbing & Gas, HVAC & Mechanical, Roofing & Waterproofing, Carpentry & Joinery, Interior Finishes, Exterior Works, Glass & Aluminium, Fire Protection, Security Systems, Data & Communications, Building Automation, Renewable Energy, Commercial Renovations & Fit-outs)
+  - Endpoints: `GET /api/services/{residential,commercial}-taxonomy`, `GET /api/services/taxonomy/{type}`, `GET /api/services/{type}-taxonomy/{category_id}`
+- ✅ **ServicePicker** (React component): mode-aware (residential/commercial), 2-panel browse view with 240px sidebar + subcategory grid, cross-taxonomy search with mark-based highlight, keyboard-first UX, colored category icons, accessible (DialogTitle + DialogDescription).
+- ✅ **PostJob**: rewritten with property-type toggle (residential/commercial) + ServicePicker integration + role-based defaults (landlord→residential, facilities/property→commercial).
+- ✅ **ClientHome**: quick tags now map to real taxonomy subcategories; "Browse services" button opens ServicePicker; picked service displays as a chip pre-filled to PostJob.
 - ✅ **Marketplace**: Trade Supply Co with cart & checkout
 - ✅ **Provider Portal**: 13 tabs functional
-- ✅ **Sidebar**: 6 role-specific nav configs, "Switch Account Type" dialog with all roles, "More" link on every role
+- ✅ **Sidebar**: 6 role-specific nav configs, "Switch Account Type" dialog with all roles, "More" link on every role, "Forum" as first-class link
 - ✅ **Landing / Signup**: 6 role cards (with Landlord & Facilities), Signup dropdown includes all roles
-- ✅ **New Modules**: Cost Estimator (real /api/cost-guide data), Community Forum (full backend), Legal & Privacy, Guide & Help, Report Provider, My Disputes, More menu
+- ✅ **New Modules**: Cost Estimator, Community Forum (full backend, role-scoped, 15+ seeded posts), Legal & Privacy, Guide & Help, Report Provider, My Disputes, More menu
 - ✅ **Landlord Dashboard** — rentals, tenants, maintenance stats + quick actions
-- ✅ **Facilities Dashboard** — commercial sites, SLA compliance, mock + real property data
-- ✅ **Community Forum (2026-02-06)** — fully functional, role-scoped:
-  - Provider community: 9 categories (Pricing & Quoting, Renovation Projects, Maintenance Ops, Compliance & Building Code, Suppliers & Wholesalers, Tools & Materials, Business Ops, Market Trends, The Smoko Room) + 9 seeded posts with 3 replies each
-  - Customer community: 8 categories (Home Maintenance, Renovation Journeys, DIY vs Hire a Pro, Tradie Reviews, Cost Questions, Smart Home & Efficiency, Landlord Corner, Dispute Advice) + 9 seeded posts
-  - Reddit-style hot ranking, sort tabs (Hot/New/Top), category filter, keyword search, tag chips, view counts, replies count
-  - Rich post detail with vote controls (up/down toggle), threaded replies with author badges, share, delete-by-owner
-  - New Post dialog with category + tags + validation
-  - Cross-audience isolation (403 on cross-role post access)
-  - Stats endpoint (posts, replies, members, active in 24h)
-- ✅ **Logo click-to-home** — Dispatchr logo everywhere routes to `/`
-- ✅ **Deployment blockers cleared**: N+1 queries, hardcoded secrets removed
-- ✅ **Security**: httpOnly cookie auth (no localStorage tokens), React hook deps fixed, no index-as-key patterns
-- ✅ **Backend tests**: 16/16 forum tests passing; 36/36 previous integration tests passing
+- ✅ **Facilities Dashboard** — commercial sites, SLA compliance
+- ✅ **Community Forum** — fully functional, role-scoped, Reddit-style hot ranking, sort tabs, category filter, keyword search
+- ✅ **Logo click-to-home**
+- ✅ **Security**: httpOnly cookie auth, no localStorage tokens, React hook deps fixed
+- ✅ **Backend tests**: 12/12 taxonomy + 16/16 forum + 36/36 core = 64/64 pytest passing
 
 ## Backend Endpoints (Forum)
 - `GET /api/forum/categories` — audience-scoped list
