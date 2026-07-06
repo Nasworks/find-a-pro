@@ -21,16 +21,18 @@ export default function AuthCallback() {
 
     (async () => {
       try {
+        // Server sets httpOnly session_token cookie automatically (SameSite=None; Secure)
         const res = await api.post('/auth/session', { session_id: sessionId, role });
         setUser(res.data.user);
-        // Also stash the session_token so bearer works if needed
-        if (res.data.session_token) localStorage.setItem('dispatchr_token', res.data.session_token);
         localStorage.removeItem('dispatchr_pending_role');
         const u = res.data.user;
-        const target = u.role === 'provider' ? '/provider/dashboard' : u.role === 'property' ? '/property/dashboard' : u.role === 'insurance' ? '/insurance/dashboard' : '/client-home';
+        const target =
+          u.role === 'provider' ? '/provider/dashboard' :
+          u.role === 'property' ? '/property/dashboard' :
+          u.role === 'insurance' ? '/insurance/dashboard' : '/client-home';
         navigate(target, { replace: true, state: { user: u } });
-      } catch (e) {
-        console.error('Auth callback failed', e);
+      } catch (err) {
+        console.error('[AuthCallback] session exchange failed:', err);
         navigate('/login', { replace: true });
       }
     })();

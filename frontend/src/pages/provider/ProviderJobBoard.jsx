@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Clock, DollarSign, Search } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
@@ -13,13 +13,17 @@ export default function ProviderJobBoard() {
   const [query, setQuery] = useState('');
 
   useEffect(() => {
-    api.get('/categories').then((r) => setCategories(r.data));
+    api.get('/categories')
+      .then((r) => setCategories(r.data))
+      .catch((err) => console.error('[ProviderJobBoard] categories failed:', err));
   }, []);
 
   useEffect(() => {
     const params = {};
     if (selectedCat) params.category = selectedCat;
-    api.get('/jobs/board', { params }).then((r) => setJobs(r.data));
+    api.get('/jobs/board', { params })
+      .then((r) => setJobs(r.data))
+      .catch((err) => console.error('[ProviderJobBoard] jobs failed:', err));
   }, [selectedCat]);
 
   const filtered = jobs.filter((j) => !query || j.title.toLowerCase().includes(query.toLowerCase()) || j.description.toLowerCase().includes(query.toLowerCase()));

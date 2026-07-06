@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, MapPin, Clock, DollarSign } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -29,14 +29,16 @@ export default function MyJobPosts() {
   const [selected, setSelected] = useState(null);
   const navigate = useNavigate();
 
-  useEffect(() => { load(); }, []);
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const res = await api.get('/jobs/mine');
       setJobs(res.data);
       if (res.data.length) setSelected((s) => s || res.data[0]);
-    } catch {}
-  };
+    } catch (err) {
+      console.error('[MyJobPosts] load failed:', err);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const counts = { all: jobs.length, open: jobs.filter((j) => j.status === 'open').length, in_progress: jobs.filter((j) => j.status === 'in_progress').length, done: jobs.filter((j) => j.status === 'done').length };
   const filtered = filter === 'all' ? jobs : jobs.filter((j) => j.status === filter);

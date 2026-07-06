@@ -96,7 +96,7 @@ export default function Membership() {
                 <tr key={row[0]}>
                   <td className="p-2 font-medium text-foreground">{row[0]}</td>
                   {row[1].map((v, i) => (
-                    <td key={i} className="p-2 text-center text-muted-foreground">
+                    <td key={`${row[0]}-col-${i}`} className="p-2 text-center text-muted-foreground">
                       {v === true ? <Check className="w-4 h-4 text-emerald-500 mx-auto" /> : v === false ? '—' : v}
                     </td>
                   ))}

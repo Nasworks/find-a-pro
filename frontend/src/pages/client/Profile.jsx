@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Bell, Settings, DollarSign, CheckCircle, TrendingUp, Wallet, Briefcase } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -13,12 +13,21 @@ export default function Profile() {
 
   useEffect(() => {
     const endpoint = user?.role === 'provider' ? '/stats/provider' : '/stats/customer';
-    api.get(endpoint).then((r) => setStats(r.data)).catch(() => {});
-    api.get('/bookings/mine').then((r) => setBookings(r.data)).catch(() => {});
+    api.get(endpoint)
+      .then((r) => setStats(r.data))
+      .catch((err) => console.error('[Profile] stats failed:', err));
+    api.get('/bookings/mine')
+      .then((r) => setBookings(r.data))
+      .catch((err) => console.error('[Profile] bookings failed:', err));
   }, [user?.role]);
 
   const initials = (user?.name || 'U').split(' ').map((s) => s[0]).slice(0, 2).join('').toUpperCase();
   const isProvider = user?.role === 'provider';
+
+  const recentInvoices = useMemo(
+    () => bookings.filter((b) => b.status === 'paid' || b.status === 'done').slice(0, 10),
+    [bookings],
+  );
 
   const monthly = [
     { m: 'Feb', paid: 240, pending: 0 },
@@ -133,7 +142,7 @@ export default function Profile() {
       {tab === 'invoices' && (
         <div className="mt-6 bg-card border border-border rounded-2xl p-6">
           <div className="font-semibold text-foreground mb-3">Recent invoices</div>
-          {bookings.filter((b) => b.status === 'paid' || b.status === 'done').slice(0, 10).map((b) => (
+          {recentInvoices.map((b) => (
             <div key={b.booking_id} className="flex items-center justify-between py-2 border-b border-border last:border-b-0">
               <div>
                 <div className="text-sm font-medium text-foreground">INV-{b.booking_id.slice(-6).toUpperCase()}</div>
@@ -145,7 +154,7 @@ export default function Profile() {
               </div>
             </div>
           ))}
-          {bookings.filter((b) => b.status === 'paid' || b.status === 'done').length === 0 && <div className="text-sm text-muted-foreground text-center py-6">No invoices yet</div>}
+          {recentInvoices.length === 0 && <div className="text-sm text-muted-foreground text-center py-6">No invoices yet</div>}
         </div>
       )}
     </div>

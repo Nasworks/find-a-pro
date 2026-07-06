@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Zap, Users, Package, TrendingUp, ClipboardList, DollarSign, Star, ShieldCheck, ChevronRight } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -13,7 +13,7 @@ export default function ProviderDashboard() {
   const [stats, setStats] = useState({});
   const [jobs, setJobs] = useState([]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [p, s, j] = await Promise.all([
         api.get('/providers/me').catch(() => ({ data: null })),
@@ -23,9 +23,11 @@ export default function ProviderDashboard() {
       setProfile(p.data);
       setStats(s.data);
       setJobs(j.data.slice(0, 5));
-    } catch {}
-  };
-  useEffect(() => { load(); }, []);
+    } catch (err) {
+      console.error('[ProviderDashboard] load failed:', err);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const toggleOnline = async () => {
     const newState = !profile?.online;

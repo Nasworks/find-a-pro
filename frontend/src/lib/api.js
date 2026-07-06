@@ -3,17 +3,11 @@ import axios from 'axios';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
+// Cookies (httpOnly auth_token / session_token) are automatically sent by the browser
+// due to `withCredentials: true`. No localStorage token handling is used.
 const api = axios.create({
   baseURL: API,
   withCredentials: true,
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('dispatchr_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
 });
 
 export default api;

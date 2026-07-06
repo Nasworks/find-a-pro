@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { MessageSquare, Star, ShieldCheck, MapPin } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import api from '../../lib/api';
@@ -13,11 +13,15 @@ export default function Bookings() {
   const [filter, setFilter] = useState('all');
   const { user } = useAuth();
 
-  const load = async () => {
-    const r = await api.get('/bookings/mine');
-    setBookings(r.data);
-  };
-  useEffect(() => { load(); }, []);
+  const load = useCallback(async () => {
+    try {
+      const r = await api.get('/bookings/mine');
+      setBookings(r.data);
+    } catch (err) {
+      console.error('[Bookings] load failed:', err);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
   const filtered = bookings.filter((b) => {
     if (filter === 'all') return true;

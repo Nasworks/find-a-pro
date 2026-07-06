@@ -302,44 +302,55 @@ def create_jwt(user_id: str) -> str:
 
 async def get_current_user(
     session_token: Optional[str] = Cookie(default=None),
+    auth_token: Optional[str] = Cookie(default=None),
     authorization: Optional[str] = Header(default=None),
 ) -> Optional[Dict[str, Any]]:
-    """Try Google OAuth session_token first, then JWT bearer."""
-    token = None
-    is_session = False
+    """Auth resolution order: session_token cookie → auth_token cookie (JWT) → Authorization header."""
+    # 1) OAuth session token (in DB)
     if session_token:
-        token = session_token
-        is_session = True
-    elif authorization and authorization.lower().startswith("bearer "):
-        token = authorization.split(" ", 1)[1]
-        # Could be either JWT or session token
-    if not token:
-        return None
+        session = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0})
+        if session:
+            expires_at = session.get("expires_at")
+            if isinstance(expires_at, str):
+                expires_at = datetime.fromisoformat(expires_at)
+            if expires_at and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if not expires_at or expires_at >= datetime.now(timezone.utc):
+                return await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0, "password_hash": 0})
 
-    # Try session token in DB first
-    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if session:
-        expires_at = session.get("expires_at")
-        if isinstance(expires_at, str):
-            expires_at = datetime.fromisoformat(expires_at)
-        if expires_at and expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at and expires_at < datetime.now(timezone.utc):
-            return None
-        user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0, "password_hash": 0})
-        return user
-
-    # Try JWT
-    if not is_session:
+    # 2) JWT cookie
+    for token in (auth_token, (authorization.split(" ", 1)[1] if authorization and authorization.lower().startswith("bearer ") else None)):
+        if not token:
+            continue
+        # Try DB session first (bearer could carry an OAuth session token from mobile)
+        session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
+        if session:
+            user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0, "password_hash": 0})
+            if user:
+                return user
         try:
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
             user_id = payload.get("user_id")
             if user_id:
                 user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
-                return user
-        except Exception:
-            pass
+                if user:
+                    return user
+        except Exception as e:  # noqa: BLE001
+            logging.debug("JWT decode failed: %s", e)
     return None
+
+
+def set_auth_cookie(response: Response, token: str) -> None:
+    """Set httpOnly, secure JWT auth cookie."""
+    response.set_cookie(
+        key="auth_token",
+        value=token,
+        max_age=7 * 24 * 60 * 60,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+    )
 
 
 async def require_user(user=Depends(get_current_user)):
@@ -350,7 +361,7 @@ async def require_user(user=Depends(get_current_user)):
 
 # ---------------- AUTH ROUTES ----------------
 @api.post("/auth/register")
-async def register(payload: UserCreate):
+async def register(payload: UserCreate, response: Response):
     existing = await db.users.find_one({"email": payload.email}, {"_id": 0})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -386,6 +397,7 @@ async def register(payload: UserCreate):
             "longitude": 174.7633 + (uuid.uuid4().int % 100) / 1000.0,
         })
     token = create_jwt(user_id)
+    set_auth_cookie(response, token)
     doc.pop("password_hash", None)
     doc.pop("_id", None)
     return {"user": doc, "token": token}
@@ -397,6 +409,7 @@ async def login(payload: UserLogin, response: Response):
     if not user or not verify_password(payload.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_jwt(user["user_id"])
+    set_auth_cookie(response, token)
     user.pop("_id", None)
     user.pop("password_hash", None)
     return {"user": user, "token": token}
@@ -495,6 +508,7 @@ async def logout(response: Response, session_token: Optional[str] = Cookie(defau
     if session_token:
         await db.user_sessions.delete_one({"session_token": session_token})
     response.delete_cookie("session_token", path="/")
+    response.delete_cookie("auth_token", path="/")
     return {"ok": True}
 
 

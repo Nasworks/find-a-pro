@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DollarSign, TrendingUp, Download, CheckCircle } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -13,8 +13,12 @@ export default function ProviderEarnings() {
     api.get('/stats/provider').then((r) => setStats(r.data)).catch(() => {});
   }, []);
 
-  const paid = bookings.filter((b) => b.status === 'paid');
-  const pending = bookings.filter((b) => b.status === 'done');
+  const paid = useMemo(() => bookings.filter((b) => b.status === 'paid'), [bookings]);
+  const pending = useMemo(() => bookings.filter((b) => b.status === 'done'), [bookings]);
+  const recentPayouts = useMemo(
+    () => bookings.filter((b) => b.status === 'paid' || b.status === 'done').slice(0, 10),
+    [bookings],
+  );
   const totalPaid = paid.reduce((s, b) => s + b.price, 0);
   const totalPending = pending.reduce((s, b) => s + b.price, 0);
 
@@ -67,7 +71,7 @@ export default function ProviderEarnings() {
           <div className="font-semibold text-foreground">Recent Payouts</div>
           <Button variant="outline" size="sm"><Download className="w-3.5 h-3.5 mr-1.5" /> Export</Button>
         </div>
-        {bookings.filter((b) => b.status === 'paid' || b.status === 'done').slice(0, 10).map((b) => (
+        {recentPayouts.map((b) => (
           <div key={b.booking_id} className="flex items-center justify-between py-3 border-b border-border last:border-b-0">
             <div className="flex items-center gap-3">
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${b.status === 'paid' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-300'}`}>

@@ -58,8 +58,8 @@ export default function InsuranceDashboard() {
 
           <div className="text-xs uppercase font-semibold text-muted-foreground mb-2">Properties with Shared Access</div>
           <div className="space-y-3">
-            {filtered.map((p, i) => (
-              <div key={i} className="bg-card border border-border rounded-2xl p-4">
+            {filtered.map((p) => (
+              <div key={`${p.name}-${p.address}`} className="bg-card border border-border rounded-2xl p-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-teal-600 text-white text-xs font-semibold flex items-center justify-center">{p.name.split(' ').map((s) => s[0]).join('')}</div>
@@ -88,8 +88,8 @@ export default function InsuranceDashboard() {
             { name: 'Property Inspection Report', client: 'John Smith', date: '2026-06-15' },
             { name: 'Roof Repair Certificate', client: 'Sarah Johnson', date: '2026-05-22' },
             { name: 'Electrical Compliance Cert', client: 'Michael Chen', date: '2026-04-10' },
-          ].map((d, i) => (
-            <div key={i} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between">
+          ].map((d) => (
+            <div key={d.name} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center"><FileText className="w-4 h-4" /></div>
                 <div>

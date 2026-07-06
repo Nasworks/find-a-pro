@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, MapPin, Clock, DollarSign, ShieldCheck, Star, Paperclip, Send, MessageSquare, FileText, Users, Award, Plus, Minus, X, Check, RotateCcw, Info, TrendingUp, Upload, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
@@ -43,6 +43,9 @@ export default function JobDetail() {
   const bidStats = amounts.length ? { min: Math.min(...amounts), max: Math.max(...amounts), avg: amounts.reduce((s, a) => s + a, 0) / amounts.length, count: amounts.length } : null;
 
   const selectedBid = selectedBidId ? bids.find((b) => b.bid_id === selectedBidId) : null;
+
+  // Memoized sort of active bids by amount (ascending, lowest first)
+  const sortedActiveBids = [...activeBids].sort((a, b) => a.amount - b.amount);
 
   const acceptBid = async (bid_id) => {
     await api.post(`/bids/${bid_id}/accept`);
@@ -186,7 +189,7 @@ export default function JobDetail() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
               <div className="space-y-3">
-                {activeBids.sort((a, b) => a.amount - b.amount).map((b) => (
+                {sortedActiveBids.map((b) => (
                   <BidCard key={b.bid_id} bid={b} bids={bids} selected={selectedBidId === b.bid_id} onSelect={() => setSelectedBidId(b.bid_id)} isOwner={isOwner} onAccept={() => acceptBid(b.bid_id)} onReject={() => rejectBid(b.bid_id)} onCounter={() => setOpenBid({ mode: 'counter', bid: b })} isMe={b.provider_id === user?.user_id} />
                 ))}
               </div>
@@ -209,7 +212,7 @@ export default function JobDetail() {
           <h3 className="font-semibold text-foreground mb-3">Job documents</h3>
           {job.photos?.length ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {job.photos.map((p, i) => <img key={i} src={p} className="w-full h-32 object-cover rounded-lg" />)}
+              {job.photos.map((p) => <img key={p} src={p} className="w-full h-32 object-cover rounded-lg" alt="" />)}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">No documents attached to this job yet. Providers may attach quotes, plans, or product spec sheets in their bids.</p>
@@ -287,7 +290,7 @@ function BidCard({ bid, bids, selected, onSelect, isOwner, onAccept, onReject, o
               <div>Item</div><div className="text-right">Qty</div><div className="text-right">Unit</div><div className="text-right">Total</div>
             </div>
             {bid.line_items.map((li, i) => (
-              <div key={i} className="grid grid-cols-[1fr_60px_100px_100px] gap-2 px-3 py-2 border-t border-border">
+              <div key={`${bid.bid_id}-li-${i}-${li.label}`} className="grid grid-cols-[1fr_60px_100px_100px] gap-2 px-3 py-2 border-t border-border">
                 <div className="truncate">{li.label}</div>
                 <div className="text-right">{li.qty}</div>
                 <div className="text-right">${li.unit_price}</div>
@@ -372,7 +375,7 @@ function BidSubmissionDialog({ mode, bid, job, onClose, onSuccess }) {
     message: bid?.message || '',
     eta_days: bid?.eta_days || 3,
     start_date: bid?.start_date || '',
-    line_items: bid?.line_items?.length ? bid.line_items : [{ label: 'Labour', qty: 1, unit_price: 0 }],
+    line_items: bid?.line_items?.length ? bid.line_items.map((li, i) => ({ ...li, _key: `li_${i}` })) : [{ _key: 'li_0', label: 'Labour', qty: 1, unit_price: 0 }],
     terms: bid?.terms || '',
     warranty_months: bid?.warranty_months || 12,
     payment_terms: bid?.payment_terms || '50% upfront, 50% on completion',
@@ -384,7 +387,7 @@ function BidSubmissionDialog({ mode, bid, job, onClose, onSuccess }) {
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const updateItem = (i, k, v) => setForm((f) => ({ ...f, line_items: f.line_items.map((it, idx) => idx === i ? { ...it, [k]: k === 'label' ? v : Number(v) || 0 } : it) }));
-  const addItem = () => setForm((f) => ({ ...f, line_items: [...f.line_items, { label: '', qty: 1, unit_price: 0 }] }));
+  const addItem = () => setForm((f) => ({ ...f, line_items: [...f.line_items, { _key: `li_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, label: '', qty: 1, unit_price: 0 }] }));
   const removeItem = (i) => setForm((f) => ({ ...f, line_items: f.line_items.filter((_, idx) => idx !== i) }));
 
   const subtotal = form.line_items.reduce((s, i) => s + (i.qty || 0) * (i.unit_price || 0), 0);
@@ -394,7 +397,7 @@ function BidSubmissionDialog({ mode, bid, job, onClose, onSuccess }) {
     files.forEach((f) => {
       const reader = new FileReader();
       reader.onload = () => {
-        setForm((prev) => ({ ...prev, documents: [...prev.documents, { name: f.name, size: `${(f.size / 1024).toFixed(1)} KB`, type: f.type, url: reader.result }] }));
+        setForm((prev) => ({ ...prev, documents: [...prev.documents, { _key: `doc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, name: f.name, size: `${(f.size / 1024).toFixed(1)} KB`, type: f.type, url: reader.result }] }));
       };
       reader.readAsDataURL(f);
     });
@@ -472,7 +475,7 @@ function BidSubmissionDialog({ mode, bid, job, onClose, onSuccess }) {
             </div>
             <div className="space-y-2">
               {form.line_items.map((it, i) => (
-                <div key={i} className="grid grid-cols-[1fr_60px_100px_100px_28px] gap-2 items-center">
+                <div key={it._key || i} className="grid grid-cols-[1fr_60px_100px_100px_28px] gap-2 items-center">
                   <Input value={it.label} onChange={(e) => updateItem(i, 'label', e.target.value)} placeholder="Item / description" />
                   <Input type="number" value={it.qty} onChange={(e) => updateItem(i, 'qty', e.target.value)} placeholder="Qty" />
                   <Input type="number" value={it.unit_price} onChange={(e) => updateItem(i, 'unit_price', e.target.value)} placeholder="Unit $" />
@@ -514,7 +517,7 @@ function BidSubmissionDialog({ mode, bid, job, onClose, onSuccess }) {
               {form.documents.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {form.documents.map((d, i) => (
-                    <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-muted/40 text-sm">
+                    <div key={d._key || `${d.name}-${d.size}-${i}`} className="flex items-center gap-2 p-2 rounded-lg bg-muted/40 text-sm">
                       <FileText className="w-4 h-4 text-primary shrink-0" />
                       <span className="flex-1 truncate">{d.name}</span>
                       <span className="text-xs text-muted-foreground">{d.size}</span>

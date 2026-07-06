@@ -119,7 +119,7 @@ function QuoteDialog({ editing, onClose, onSuccess }) {
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const updateItem = (i, k, v) => setForm((f) => ({ ...f, line_items: f.line_items.map((it, idx) => idx === i ? { ...it, [k]: k === 'label' ? v : Number(v) || 0 } : it) }));
-  const addItem = () => setForm((f) => ({ ...f, line_items: [...f.line_items, { label: '', qty: 1, unit_price: 0 }] }));
+  const addItem = () => setForm((f) => ({ ...f, line_items: [...f.line_items, { _key: `li_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, label: '', qty: 1, unit_price: 0 }] }));
   const removeItem = (i) => setForm((f) => ({ ...f, line_items: f.line_items.filter((_, idx) => idx !== i) }));
 
   const subtotal = form.line_items.reduce((s, i) => s + (i.qty || 0) * (i.unit_price || 0), 0);
@@ -155,7 +155,7 @@ function QuoteDialog({ editing, onClose, onSuccess }) {
             <div className="flex items-center justify-between mb-2"><Label>Line items</Label><Button type="button" size="sm" variant="outline" onClick={addItem}><Plus className="w-3 h-3 mr-1" /> Add</Button></div>
             <div className="space-y-2">
               {form.line_items.map((it, i) => (
-                <div key={i} className="grid grid-cols-[1fr_60px_100px_100px_28px] gap-2 items-center">
+                <div key={it._key || i} className="grid grid-cols-[1fr_60px_100px_100px_28px] gap-2 items-center">
                   <Input value={it.label} onChange={(e) => updateItem(i, 'label', e.target.value)} placeholder="Description" />
                   <Input type="number" value={it.qty} onChange={(e) => updateItem(i, 'qty', e.target.value)} placeholder="Qty" />
                   <Input type="number" value={it.unit_price} onChange={(e) => updateItem(i, 'unit_price', e.target.value)} placeholder="Unit $" />

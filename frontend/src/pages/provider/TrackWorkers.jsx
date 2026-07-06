@@ -18,8 +18,12 @@ export default function TrackWorkers() {
   const [devices, setDevices] = useState([]);
 
   useEffect(() => {
-    api.get('/team').then((r) => setMembers(r.data));
-    api.get('/gps-devices').then((r) => setDevices(r.data));
+    api.get('/team')
+      .then((r) => setMembers(r.data))
+      .catch((err) => console.error('[TrackWorkers] team failed:', err));
+    api.get('/gps-devices')
+      .then((r) => setDevices(r.data))
+      .catch((err) => console.error('[TrackWorkers] devices failed:', err));
   }, []);
 
   // Assign fake positions to members clustered around Auckland

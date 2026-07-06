@@ -11,7 +11,11 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await api.get('/auth/me');
       setUser(res.data);
-    } catch {
+    } catch (err) {
+      // 401 means not logged in — expected when there's no session
+      if (err?.response?.status !== 401) {
+        console.error('[AuthContext] /auth/me failed:', err);
+      }
       setUser(null);
     } finally {
       setLoading(false);
@@ -27,30 +31,32 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, [checkAuth]);
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
+    // The server sets httpOnly `auth_token` cookie; no localStorage usage.
     const res = await api.post('/auth/login', { email, password });
-    localStorage.setItem('dispatchr_token', res.data.token);
     setUser(res.data.user);
     return res.data.user;
-  };
+  }, []);
 
-  const register = async (payload) => {
+  const register = useCallback(async (payload) => {
     const res = await api.post('/auth/register', payload);
-    localStorage.setItem('dispatchr_token', res.data.token);
     setUser(res.data.user);
     return res.data.user;
-  };
+  }, []);
 
-  const logout = async () => {
-    try { await api.post('/auth/logout'); } catch {}
-    localStorage.removeItem('dispatchr_token');
+  const logout = useCallback(async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (err) {
+      console.error('[AuthContext] logout failed:', err);
+    }
     setUser(null);
-  };
+  }, []);
 
-  const switchRole = async (role) => {
+  const switchRole = useCallback(async (role) => {
     await api.patch('/auth/role', { role });
     setUser((u) => ({ ...u, role }));
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, switchRole, refresh: checkAuth, setUser }}>

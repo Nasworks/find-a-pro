@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -33,6 +33,11 @@ export default function ProviderCalendar() {
   const monthLabel = current.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const today = new Date();
 
+  const upcomingBookings = useMemo(
+    () => bookings.filter((b) => new Date(b.scheduled_at) >= today && b.status !== 'cancelled').slice(0, 5),
+    [bookings, today],
+  );
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -55,10 +60,11 @@ export default function ProviderCalendar() {
         </div>
         <div className="grid grid-cols-7 gap-1">
           {cells.map((d, i) => {
+            const cellKey = d ? `day-${current.getFullYear()}-${current.getMonth()}-${d}` : `empty-${i}`;
             const isToday = d === today.getDate() && current.getMonth() === today.getMonth() && current.getFullYear() === today.getFullYear();
             const dayBookings = d ? bookingsByDay[d] || [] : [];
             return (
-              <div key={i} className={`min-h-[80px] p-1.5 rounded-lg border ${d ? 'border-border' : 'border-transparent'} ${isToday ? 'bg-primary/5 border-primary/40' : ''}`}>
+              <div key={cellKey} className={`min-h-[80px] p-1.5 rounded-lg border ${d ? 'border-border' : 'border-transparent'} ${isToday ? 'bg-primary/5 border-primary/40' : ''}`}>
                 {d && (
                   <>
                     <div className={`text-xs font-medium ${isToday ? 'text-primary' : 'text-foreground'}`}>{d}</div>
@@ -79,7 +85,7 @@ export default function ProviderCalendar() {
       <div className="mt-6">
         <div className="font-semibold text-foreground mb-3">Upcoming</div>
         <div className="space-y-2">
-          {bookings.filter((b) => new Date(b.scheduled_at) >= today && b.status !== 'cancelled').slice(0, 5).map((b) => (
+          {upcomingBookings.map((b) => (
             <div key={b.booking_id} className="bg-card border border-border rounded-xl p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center"><Clock className="w-4 h-4" /></div>
