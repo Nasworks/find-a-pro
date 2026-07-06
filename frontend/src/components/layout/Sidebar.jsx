@@ -22,6 +22,7 @@ const clientNav = [
     { to: '/live-map', label: 'Live Map', icon: Map },
     { to: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
     { to: '/news-feed', label: 'News Feed', icon: Newspaper },
+    { to: '/community-forum', label: 'Forum', icon: Users },
   ]},
   { section: 'Actions', items: [
     { to: '/post-job', label: 'Post a Job', icon: Plus, highlight: true },
@@ -49,6 +50,7 @@ const providerNav = [
   { section: 'Grow', items: [
     { to: '/provider/trade-store', label: 'Trade Store', icon: ShoppingBag },
     { to: '/news-feed', label: 'News Feed', icon: Newspaper },
+    { to: '/community-forum', label: 'Forum', icon: Users },
     { to: '/provider/referrals', label: 'Referrals', icon: Share2 },
     { to: '/provider/membership', label: 'Membership', icon: Crown },
     { to: '/provider/warranty-claims', label: 'Warranty Claims', icon: ShieldCheck },

@@ -50,6 +50,7 @@ import ProfileContact from './pages/provider/ProfileContact';
 import CostEstimator from './pages/shared/CostEstimator';
 import GuideHelp from './pages/shared/GuideHelp';
 import CommunityForum from './pages/shared/CommunityForum';
+import ForumPostDetail from './pages/shared/ForumPostDetail';
 import LegalPrivacy from './pages/shared/LegalPrivacy';
 import ReportProvider from './pages/shared/ReportProvider';
 import MyDisputes from './pages/shared/MyDisputes';
@@ -140,6 +141,7 @@ function AppRouter() {
         <Route path="/cost-estimator" element={<CostEstimator />} />
         <Route path="/guide-help" element={<GuideHelp />} />
         <Route path="/community-forum" element={<CommunityForum />} />
+        <Route path="/community-forum/:postId" element={<ForumPostDetail />} />
         <Route path="/legal-privacy" element={<LegalPrivacy />} />
         <Route path="/report-provider" element={<ReportProvider />} />
         <Route path="/my-disputes" element={<MyDisputes />} />

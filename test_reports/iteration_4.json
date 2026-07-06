@@ -1,0 +1,25 @@
+{
+  "summary": "End-to-end verification of the Community Forum feature for provider vs customer roles + logo-click-to-home regression. Backend: 16/16 pytest tests PASS (categories, seeded posts, sort, search, category filter, post detail, cross-audience 403, full post/reply/vote/delete lifecycle, validation, stats, unauth 401). Frontend: all 16 requested UI flows PASS on preview URL — 9 provider posts + 9 provider categories, 8 customer categories + 10+ customer posts (seeded 9 + prior test data), sort tabs work, search 'bathroom' narrows results (2 provider, 4 customer), category filter works, post cards navigate to detail, upvote persists across reload (152→153→153), new-post dialog creates post that appears at top of New feed, reply flow increments count, reply vote buttons work, owner delete returns to /community-forum and removes card, Sidebar Forum link present for both roles, Logo click redirects logged-in customer to /client-home and anonymous user to / (LandingRoleSelect).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_forum.py",
+    "/app/test_reports/pytest/forum_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~2000 lines — approaching the 700-line guideline threshold and should be modularized (auth, forum, cost-guide, seed each into their own module) before it grows further.",
+    "_hot_score references a hard-coded epoch of 2026-01-01 which produces negative seconds for older seed data; not a bug but worth documenting.",
+    "GET /api/forum/posts/{post_id} increments views on every fetch, including refreshes — could inflate view counts. Consider debounce or unique-viewer tracking.",
+    "forum_stats.members query includes 'insurance' role in the customer members count but insurance is a separate audience; low priority."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_forum.py (new)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% of 16 requested flows"},
+  "test_credentials": "Created on the fly per run: forumqa-{role}-{ts}-{suffix}@dispatchr.demo / testpass123",
+  "seed_data_creation": "None persisted beyond ephemeral QA users; TEST_ posts created during lifecycle test were deleted at end of the same test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Forum feature is fully working end-to-end. Cookie auth via /api/auth/register works both for pytest (Bearer token from response body) and Playwright (Set-Cookie applied to browser context). Vote controls use nested span for score — read via JS query on parent of upvote btn. When testing owner delete, register a fresh account first (seeded posts have author_id set to other users)."
+}

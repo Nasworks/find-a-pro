@@ -1329,6 +1329,279 @@ async def job_history(user=Depends(require_user)):
     return bookings
 
 
+# ---------------- FORUM ----------------
+FORUM_CATEGORIES = {
+    "customer": [
+        {"id": "maintenance", "name": "Home Maintenance", "icon": "Wrench", "color": "#3B82F6", "desc": "Preventive care, seasonal checklists, small fixes"},
+        {"id": "renovations", "name": "Renovation Journeys", "icon": "Hammer", "color": "#EC4899", "desc": "Before/after, budgets, timelines, learnings"},
+        {"id": "diy-vs-pro", "name": "DIY vs Hire a Pro", "icon": "HelpCircle", "color": "#8B5CF6", "desc": "When to DIY, when to call a tradie"},
+        {"id": "reviews", "name": "Tradie Reviews", "icon": "Star", "color": "#F59E0B", "desc": "Share honest reviews of local pros"},
+        {"id": "cost-questions", "name": "Cost Questions", "icon": "DollarSign", "color": "#10B981", "desc": "Is this quote fair? Compare pricing with neighbours"},
+        {"id": "smart-home", "name": "Smart Home & Efficiency", "icon": "Home", "color": "#06B6D4", "desc": "Heat pumps, insulation, solar, EV chargers"},
+        {"id": "landlord-corner", "name": "Landlord Corner", "icon": "KeyRound", "color": "#F97316", "desc": "Rental compliance, Healthy Homes, tenant care"},
+        {"id": "disputes", "name": "Dispute Advice", "icon": "Gavel", "color": "#EF4444", "desc": "Warranty, workmanship, DBH complaints"},
+    ],
+    "provider": [
+        {"id": "pricing", "name": "Pricing & Quoting", "icon": "DollarSign", "color": "#10B981", "desc": "Rate cards, markups, call-out fees, quote strategy"},
+        {"id": "reno-projects", "name": "Renovation Projects", "icon": "Hammer", "color": "#EC4899", "desc": "Bathroom, kitchen, extensions — case studies & tips"},
+        {"id": "maintenance-ops", "name": "Maintenance Ops", "icon": "Wrench", "color": "#3B82F6", "desc": "Route planning, preventive schedules, callback rates"},
+        {"id": "compliance", "name": "Compliance & Building Code", "icon": "ShieldCheck", "color": "#EF4444", "desc": "H&S, licensing, insurance, NZBC, Healthy Homes"},
+        {"id": "suppliers", "name": "Suppliers & Wholesalers", "icon": "Truck", "color": "#F59E0B", "desc": "Bunnings vs Mitre 10 vs trade merchants"},
+        {"id": "tools-materials", "name": "Tools & Materials", "icon": "HardHat", "color": "#6B7280", "desc": "Product reviews, best-value gear"},
+        {"id": "business", "name": "Business Ops", "icon": "Briefcase", "color": "#8B5CF6", "desc": "Hiring apprentices, GST, software, invoicing"},
+        {"id": "market-trends", "name": "Market Trends", "icon": "TrendingUp", "color": "#0EA5E9", "desc": "What's hot in NZ — demand, lead flow, forecasts"},
+        {"id": "smoko-room", "name": "The Smoko Room", "icon": "Coffee", "color": "#78716C", "desc": "Banter, memes, weekend chat"},
+    ],
+}
+
+
+class ForumPostCreate(BaseModel):
+    title: str
+    body: str
+    category: str
+    tags: List[str] = []
+
+
+class ForumReplyCreate(BaseModel):
+    body: str
+    parent_reply_id: Optional[str] = None
+
+
+def _forum_audience(role: str) -> str:
+    return "provider" if role == "provider" else "customer"
+
+
+def _hot_score(post: Dict[str, Any]) -> float:
+    """Reddit-style hot ranking."""
+    score = (post.get("upvotes", 0) - post.get("downvotes", 0))
+    order = (abs(score) if score != 0 else 1)
+    import math
+    order = math.log10(max(order, 1))
+    sign = 1 if score > 0 else (-1 if score < 0 else 0)
+    created = post.get("created_at")
+    if isinstance(created, datetime):
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        seconds = (created - datetime(2026, 1, 1, tzinfo=timezone.utc)).total_seconds()
+    else:
+        seconds = 0
+    return round(sign * order + seconds / 45000, 7)
+
+
+def _serialize_post(post: Dict[str, Any], user_id: Optional[str] = None) -> Dict[str, Any]:
+    p = {k: v for k, v in post.items() if k != "_id"}
+    p["score"] = post.get("upvotes", 0) - post.get("downvotes", 0)
+    p["user_vote"] = 0
+    if user_id and post.get("voters"):
+        for v in post["voters"]:
+            if v.get("user_id") == user_id:
+                p["user_vote"] = v.get("value", 0)
+                break
+    p.pop("voters", None)
+    return p
+
+
+@api.get("/forum/categories")
+async def forum_categories(user=Depends(require_user)):
+    audience = _forum_audience(user["role"])
+    return {"audience": audience, "categories": FORUM_CATEGORIES[audience]}
+
+
+@api.get("/forum/posts")
+async def list_forum_posts(
+    category: Optional[str] = None,
+    sort: str = "hot",
+    q: Optional[str] = None,
+    user=Depends(require_user),
+):
+    audience = _forum_audience(user["role"])
+    query: Dict[str, Any] = {"audience": audience}
+    if category and category != "all":
+        query["category"] = category
+    if q:
+        query["$or"] = [
+            {"title": {"$regex": q, "$options": "i"}},
+            {"body": {"$regex": q, "$options": "i"}},
+        ]
+    cursor = db.forum_posts.find(query)
+    if sort == "new":
+        cursor = cursor.sort("created_at", -1)
+    elif sort == "top":
+        cursor = cursor.sort([("upvotes", -1), ("created_at", -1)])
+    else:  # hot
+        cursor = cursor.sort([("hot_score", -1), ("created_at", -1)])
+    posts = await cursor.limit(100).to_list(100)
+    return [_serialize_post(p, user["user_id"]) for p in posts]
+
+
+@api.get("/forum/posts/{post_id}")
+async def get_forum_post(post_id: str, user=Depends(require_user)):
+    post = await db.forum_posts.find_one({"post_id": post_id})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    audience = _forum_audience(user["role"])
+    if post.get("audience") != audience:
+        raise HTTPException(status_code=403, detail="Not visible in your community")
+    # increment views (fire and forget)
+    await db.forum_posts.update_one({"post_id": post_id}, {"$inc": {"views": 1}})
+    post["views"] = post.get("views", 0) + 1
+    replies = await db.forum_replies.find({"post_id": post_id}).sort("created_at", 1).to_list(500)
+    return {
+        "post": _serialize_post(post, user["user_id"]),
+        "replies": [_serialize_reply(r, user["user_id"]) for r in replies],
+    }
+
+
+def _serialize_reply(reply: Dict[str, Any], user_id: Optional[str] = None) -> Dict[str, Any]:
+    r = {k: v for k, v in reply.items() if k != "_id"}
+    r["score"] = reply.get("upvotes", 0) - reply.get("downvotes", 0)
+    r["user_vote"] = 0
+    if user_id and reply.get("voters"):
+        for v in reply["voters"]:
+            if v.get("user_id") == user_id:
+                r["user_vote"] = v.get("value", 0)
+                break
+    r.pop("voters", None)
+    return r
+
+
+@api.post("/forum/posts")
+async def create_forum_post(payload: ForumPostCreate, user=Depends(require_user)):
+    audience = _forum_audience(user["role"])
+    valid_cats = {c["id"] for c in FORUM_CATEGORIES[audience]}
+    if payload.category not in valid_cats:
+        raise HTTPException(status_code=400, detail="Invalid category for your community")
+    if len(payload.title.strip()) < 5:
+        raise HTTPException(status_code=400, detail="Title too short (min 5 chars)")
+    if len(payload.body.strip()) < 10:
+        raise HTTPException(status_code=400, detail="Body too short (min 10 chars)")
+    now = datetime.now(timezone.utc)
+    post = {
+        "post_id": f"fp_{uuid.uuid4().hex[:12]}",
+        "audience": audience,
+        "category": payload.category,
+        "title": payload.title.strip(),
+        "body": payload.body.strip(),
+        "tags": [t.strip().lower() for t in payload.tags if t.strip()][:5],
+        "author_id": user["user_id"],
+        "author_name": user["name"],
+        "author_role": user["role"],
+        "upvotes": 1,
+        "downvotes": 0,
+        "voters": [{"user_id": user["user_id"], "value": 1}],
+        "replies_count": 0,
+        "views": 0,
+        "pinned": False,
+        "created_at": now,
+        "updated_at": now,
+        "hot_score": 0.0,
+    }
+    post["hot_score"] = _hot_score(post)
+    await db.forum_posts.insert_one(post)
+    return _serialize_post(post, user["user_id"])
+
+
+@api.post("/forum/posts/{post_id}/replies")
+async def create_forum_reply(post_id: str, payload: ForumReplyCreate, user=Depends(require_user)):
+    post = await db.forum_posts.find_one({"post_id": post_id})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    audience = _forum_audience(user["role"])
+    if post.get("audience") != audience:
+        raise HTTPException(status_code=403, detail="Not visible in your community")
+    if len(payload.body.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Reply too short")
+    now = datetime.now(timezone.utc)
+    reply = {
+        "reply_id": f"fr_{uuid.uuid4().hex[:12]}",
+        "post_id": post_id,
+        "parent_reply_id": payload.parent_reply_id,
+        "author_id": user["user_id"],
+        "author_name": user["name"],
+        "author_role": user["role"],
+        "body": payload.body.strip(),
+        "upvotes": 1,
+        "downvotes": 0,
+        "voters": [{"user_id": user["user_id"], "value": 1}],
+        "created_at": now,
+    }
+    await db.forum_replies.insert_one(reply)
+    await db.forum_posts.update_one(
+        {"post_id": post_id},
+        {"$inc": {"replies_count": 1}, "$set": {"updated_at": now}},
+    )
+    return _serialize_reply(reply, user["user_id"])
+
+
+async def _vote(coll_name: str, id_field: str, target_id: str, value: int, user_id: str) -> Dict[str, Any]:
+    if value not in (-1, 0, 1):
+        raise HTTPException(status_code=400, detail="Vote must be -1, 0 or 1")
+    coll = db[coll_name]
+    doc = await coll.find_one({id_field: target_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    voters = doc.get("voters", [])
+    existing = next((v for v in voters if v.get("user_id") == user_id), None)
+    up = doc.get("upvotes", 0)
+    down = doc.get("downvotes", 0)
+    if existing:
+        prev = existing.get("value", 0)
+        if prev == 1:
+            up -= 1
+        if prev == -1:
+            down -= 1
+        voters = [v for v in voters if v.get("user_id") != user_id]
+    if value == 1:
+        up += 1
+    if value == -1:
+        down += 1
+    if value != 0:
+        voters.append({"user_id": user_id, "value": value})
+    update = {"upvotes": max(0, up), "downvotes": max(0, down), "voters": voters}
+    if coll_name == "forum_posts":
+        merged = {**doc, **update}
+        update["hot_score"] = _hot_score(merged)
+    await coll.update_one({id_field: target_id}, {"$set": update})
+    return {"score": update["upvotes"] - update["downvotes"], "user_vote": value, "upvotes": update["upvotes"], "downvotes": update["downvotes"]}
+
+
+@api.post("/forum/posts/{post_id}/vote")
+async def vote_forum_post(post_id: str, body: Dict[str, Any], user=Depends(require_user)):
+    return await _vote("forum_posts", "post_id", post_id, int(body.get("value", 0)), user["user_id"])
+
+
+@api.post("/forum/replies/{reply_id}/vote")
+async def vote_forum_reply(reply_id: str, body: Dict[str, Any], user=Depends(require_user)):
+    return await _vote("forum_replies", "reply_id", reply_id, int(body.get("value", 0)), user["user_id"])
+
+
+@api.delete("/forum/posts/{post_id}")
+async def delete_forum_post(post_id: str, user=Depends(require_user)):
+    post = await db.forum_posts.find_one({"post_id": post_id})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.get("author_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="You can only delete your own posts")
+    await db.forum_posts.delete_one({"post_id": post_id})
+    await db.forum_replies.delete_many({"post_id": post_id})
+    return {"ok": True}
+
+
+@api.get("/forum/stats")
+async def forum_stats(user=Depends(require_user)):
+    audience = _forum_audience(user["role"])
+    posts = await db.forum_posts.count_documents({"audience": audience})
+    replies_agg = await db.forum_replies.aggregate([
+        {"$lookup": {"from": "forum_posts", "localField": "post_id", "foreignField": "post_id", "as": "p"}},
+        {"$match": {"p.audience": audience}},
+        {"$count": "n"},
+    ]).to_list(1)
+    replies = replies_agg[0]["n"] if replies_agg else 0
+    members = await db.users.count_documents({"role": "provider" if audience == "provider" else {"$in": ["customer", "property", "landlord", "facilities", "insurance"]}})
+    online = await db.forum_posts.count_documents({"audience": audience, "updated_at": {"$gt": datetime.now(timezone.utc) - timedelta(hours=24)}})
+    return {"audience": audience, "posts": posts, "replies": replies, "members": members, "active_today": online}
+
+
 # ---------------- COST GUIDE ----------------
 COST_GUIDE = [
     {"category": "Plumbing", "job": "Leaking tap repair", "low": 80, "high": 180, "avg": 120, "unit": "job"},
@@ -1528,6 +1801,170 @@ async def seed_data():
                 "created_at": datetime.now(timezone.utc),
                 **e,
             })
+
+    # FORUM POSTS (property maintenance & renovations focus)
+    if await db.forum_posts.count_documents({}) == 0:
+        # Pull existing provider + customer users for realistic authorship
+        providers = await db.provider_profiles.find({}, {"_id": 0}).to_list(20)
+        customers = await db.users.find({"role": {"$in": ["customer", "landlord", "property"]}}, {"_id": 0}).to_list(20)
+
+        def _author(role: str, idx: int) -> Dict[str, Any]:
+            if role == "provider" and providers:
+                pr = providers[idx % len(providers)]
+                return {"author_id": pr["user_id"], "author_name": pr["business_name"], "author_role": "provider"}
+            if customers:
+                c = customers[idx % len(customers)]
+                return {"author_id": c["user_id"], "author_name": c.get("name", "Homeowner"), "author_role": c.get("role", "customer")}
+            # fallback synthetic
+            return {"author_id": f"seed_{uuid.uuid4().hex[:8]}", "author_name": ["Emma T.", "Jack R.", "Priya S.", "Ben M.", "Anna K."][idx % 5], "author_role": role}
+
+        provider_seed = [
+            {"category": "pricing", "title": "Fair call-out fee in Auckland 2026 — what's your number?",
+             "body": "Been holding at $85 for 3 years. Fuel + van maintenance up ~30%. Thinking of moving to $110 for CBD/Northshore, $95 for South Auckland. What's everyone charging right now? Also — do you waive it if the job goes ahead?",
+             "tags": ["pricing", "auckland", "call-out"], "up": 156, "down": 4, "views": 812, "replies": 42, "days_ago": 0.1},
+            {"category": "reno-projects", "title": "Full bathroom reno case study — $22k, 9 working days, small ensuite",
+             "body": "Just wrapped a small ensuite reno in Grey Lynn. Sharing the full breakdown:\n\n• Strip-out & waste: $1,400\n• Waterproofing (2 coats): $900\n• Tiles + adhesive (25m²): $3,200\n• Vanity + tapware + mirror: $2,600\n• Toilet + install: $1,100\n• Shower screen (frameless): $2,200\n• Plumbing labour: $3,800\n• Tiling labour: $4,500\n• Painting + finishing: $1,300\n• Skip + rubbish: $600\n• Markup + profit: $400\n\nAny things you'd cost differently? Owner was stoked — 5★ review + 2 referrals already.",
+             "tags": ["bathroom", "renovation", "case-study"], "up": 240, "down": 3, "views": 1420, "replies": 87, "days_ago": 0.4, "pinned": True},
+            {"category": "compliance", "title": "Healthy Homes deadline crunch — what landlords are asking",
+             "body": "Since Feb 2026 the compliance rate has spiked. Getting daily calls from landlords panic-fixing insulation, extraction fans, moisture barriers.\n\nAvg job: $1,800–$3,200. Insulation top-ups the biggest earner. Make sure you're pulling a compliance statement PDF at handover — saves 40 min back-and-forth per job.",
+             "tags": ["healthy-homes", "landlord", "compliance"], "up": 91, "down": 2, "views": 618, "replies": 33, "days_ago": 1.2},
+            {"category": "market-trends", "title": "Heat pump servicing demand is up 40% YoY — anyone else?",
+             "body": "Winter's coming and my inbox is on fire. Servicing (not new installs) has doubled since last April. Filter cleans + gas check + drain flush = $180–$220 average, 45 min in-and-out.\n\nWhat's driving it? I think Healthy Homes + more heat pumps installed 5+ years ago hitting service age.",
+             "tags": ["heat-pump", "hvac", "demand"], "up": 44, "down": 1, "views": 302, "replies": 15, "days_ago": 1.5},
+            {"category": "suppliers", "title": "Mitre 10 Trade vs Bunnings Powerpass — real numbers",
+             "body": "Ran a side-by-side for 3 months on the same basket (framing timber, GIB, screws, insulation). Powerpass came out 6% cheaper on materials, but Mitre 10 has better delivery windows in Auckland (next-day vs 2–3 day). If you're doing volume, Placemakers still beats both on framing timber. Anyone got the ITM data?",
+             "tags": ["suppliers", "materials"], "up": 68, "down": 3, "views": 410, "replies": 21, "days_ago": 3.0},
+            {"category": "business", "title": "Late-paying clients — my 3-step process that gets 95% paid in 14 days",
+             "body": "After 6 years of chasing invoices I finally have a system:\n\n1) Deposit + progress + final structure written into the quote (30/40/30). Sign before work starts.\n2) Auto-reminder at day 7 & 14 (Xero does this free).\n3) At day 21: a phone call, not email. Human voice = payment 80% of the time. Day 30 = Baycorp letter (costs $19, works).\n\nHappy to share the email templates.",
+             "tags": ["business", "invoicing", "cashflow"], "up": 210, "down": 5, "views": 1100, "replies": 64, "days_ago": 4.0},
+            {"category": "tools-materials", "title": "Milwaukee M18 vs Makita LXT — 2026 verdict after 18 months",
+             "body": "Ran both platforms side-by-side on our crew. Milwaukee wins on impact driver torque (curse of the exhaust brake screws). Makita wins on battery life + charger network. For an all-day tradie: Makita. For heavy demolition: Milwaukee. DeWalt XR is the dark horse — cheaper this year and warranty is easier to claim.",
+             "tags": ["tools", "cordless", "reviews"], "up": 88, "down": 12, "views": 545, "replies": 39, "days_ago": 5.0},
+            {"category": "maintenance-ops", "title": "Route optimisation cut my drive time 22% — free tool",
+             "body": "I was doing 3 unrelated suburbs a day. Started clustering by suburb + using Google Routes API (free tier is enough for a 1-van op). Went from ~45km/day to 35km. That's 2 extra jobs a week, ~$1,200/mo more revenue for the same effort. If you use Servicem8 the routing add-on is $12/mo and does the same thing.",
+             "tags": ["operations", "routing", "efficiency"], "up": 55, "down": 2, "views": 288, "replies": 18, "days_ago": 6.5},
+            {"category": "smoko-room", "title": "Weirdest thing you've found behind a wall?",
+             "body": "Ripped out a bathroom wall in Devonport last week and found a 1970s newspaper wrapped around a beer bottle with a note: 'Sorry future guy, ran out of GIB.' 😂 What have you all uncovered?",
+             "tags": ["banter"], "up": 178, "down": 1, "views": 890, "replies": 92, "days_ago": 2.0},
+        ]
+
+        customer_seed = [
+            {"category": "cost-questions", "title": "Is $28k reasonable for a full bathroom reno? Grey Lynn villa",
+             "body": "Got 3 quotes for our upstairs bathroom (small, 3.2m x 2.4m):\n\n• Quote A: $24,500 (mid-range fixtures, 3 weeks)\n• Quote B: $28,900 (premium fixtures, 2.5 weeks, better warranty)\n• Quote C: $19,200 (basic fixtures, 4 weeks, no waterproofing warranty)\n\nLeaning towards B but budget is tight. Anyone renovated recently in the inner suburbs — what did you actually pay?",
+             "tags": ["bathroom", "quotes", "budget"], "up": 89, "down": 1, "views": 542, "replies": 34, "days_ago": 0.3},
+            {"category": "renovations", "title": "Our 12-month kitchen renovation journey (before/after + full budget)",
+             "body": "We finally finished! Started July 2025, wrapped last month. TL;DR: budget was $45k, spent $58k, worth every dollar.\n\nBiggest surprises:\n1) Electrical rewire added $6k we didn't budget for (1962 house)\n2) Waited 11 weeks for the stone benchtop — plan ahead\n3) Living without a kitchen for 3 months was harder than we thought — we had a microwave + air fryer set up in the garage\n\nDM if you want the full spreadsheet, happy to share.",
+             "tags": ["kitchen", "renovation", "before-after"], "up": 312, "down": 2, "views": 2100, "replies": 118, "days_ago": 1.0, "pinned": True},
+            {"category": "maintenance", "title": "Autumn maintenance checklist — what am I missing?",
+             "body": "Made this list for our house before winter hits:\n\n☐ Clean gutters + downpipes\n☐ Service heat pump (filter + gas)\n☐ Check roof for loose flashings\n☐ Reseal windows (silicone perishing)\n☐ Bleed radiators\n☐ Chimney sweep (open fire)\n☐ Insulation top-up in ceiling\n☐ Test smoke alarms + replace batteries\n\nWhat else should I be doing? First winter in this house.",
+             "tags": ["maintenance", "seasonal", "winter"], "up": 67, "down": 0, "views": 380, "replies": 28, "days_ago": 2.0},
+            {"category": "diy-vs-pro", "title": "Painting the exterior of a 2-storey — DIY or hire?",
+             "body": "It's a 1970s weatherboard, ~180m² external wall area. Quotes are $6,500–$9,500. I've painted the interior myself. Am I insane to think I could do this in a couple of weekends with scaffolding hire? Or is this a rookie trap?",
+             "tags": ["painting", "diy", "exterior"], "up": 45, "down": 1, "views": 288, "replies": 41, "days_ago": 2.5},
+            {"category": "reviews", "title": "★★★★★ Sarah Chen Plumbing — burst pipe emergency, showed up in 40 min",
+             "body": "3am on Sunday, pipe burst in the wall. Called Dispatchr, Sarah's team dispatched within 20 min, on site in 40. Fixed it in an hour, minimal drywall damage, invoice was FAIR ($480 total incl after-hours). Cannot recommend enough. Booking her for our bathroom reno next month.",
+             "tags": ["review", "plumbing", "emergency"], "up": 156, "down": 0, "views": 720, "replies": 22, "days_ago": 3.0},
+            {"category": "smart-home", "title": "Heat pump vs central heating in a 1930s villa — 2 years in",
+             "body": "We put in 3x Mitsubishi 5kW units instead of central. Total install cost $9,800 (subsidised).\n\nRunning costs Y1: $1,820. Y2: $1,650. Insulation matters more than the unit itself.\n\nRegrets? One — we should've done ceiling underlay before the heat pumps, not after. Would've saved $400/yr from day 1.",
+             "tags": ["heat-pump", "insulation", "efficiency"], "up": 128, "down": 3, "views": 645, "replies": 53, "days_ago": 4.0},
+            {"category": "landlord-corner", "title": "Healthy Homes compliance — DIY checklist for landlords",
+             "body": "Just did compliance on my rental in Papakura. Total cost: $2,400 (insulation top-up + 2 extraction fans + moisture barrier). Sharing the checklist I used:\n\n• Ceiling insulation R2.9+\n• Underfloor R1.3+ (if accessible)\n• Extraction in kitchen (150mm+ vented outside)\n• Extraction in bathroom (120mm+)\n• Ground moisture barrier (150μm poly)\n• Draught stopping on doors + windows\n• Fixed heater in main living (heat pump ≥1.5kW per m² of floor)\n\nGet compliance statement PDF from your tradie — you'll need it if audited.",
+             "tags": ["landlord", "healthy-homes", "compliance"], "up": 94, "down": 1, "views": 480, "replies": 31, "days_ago": 5.0},
+            {"category": "disputes", "title": "Tiler left grout uneven — what are my rights?",
+             "body": "Paid $4,200 for bathroom tiling. Grout lines are visibly uneven (some 2mm, some 5mm) and one corner has cracked already after 3 weeks. Tiler says 'that's normal'. Is it? What's the process — call DBH, small claims, or file dispute through Dispatchr's mediation?",
+             "tags": ["dispute", "warranty", "tiling"], "up": 33, "down": 0, "views": 210, "replies": 47, "days_ago": 6.0},
+            {"category": "maintenance", "title": "Best drain camera for renters — recommendations?",
+             "body": "Our shower drain blocks every 2 months. Landlord won't send anyone until it's fully blocked. Thinking of buying a cheap borescope to see what's going on. Anything under $150 that actually works? Or is this a false economy?",
+             "tags": ["drains", "diy"], "up": 22, "down": 0, "views": 145, "replies": 19, "days_ago": 7.0},
+        ]
+
+        replies_pool = [
+            "Great writeup, really useful. Bookmarking.",
+            "I'd add — always get the compliance PDF at handover. Some tradies forget and it's a nightmare later.",
+            "Interesting perspective. My numbers are pretty similar for Wellington market.",
+            "Just did something similar. Total came in 10% under yours — happy to share supplier list.",
+            "Have you tried getting a second opinion? Sounds like it might be worth it.",
+            "Solid advice, thanks for sharing.",
+            "This is why I love this forum. Real numbers, real experience.",
+            "What software are you using for the quoting side of this?",
+            "100% agree. Been doing it this way for 4 years now.",
+            "Would love to see the spreadsheet if you're happy to share.",
+        ]
+
+        for i, sp in enumerate(provider_seed):
+            author = _author("provider", i)
+            now = datetime.now(timezone.utc) - timedelta(days=sp["days_ago"])
+            post = {
+                "post_id": f"fp_{uuid.uuid4().hex[:12]}",
+                "audience": "provider",
+                "category": sp["category"],
+                "title": sp["title"],
+                "body": sp["body"],
+                "tags": sp["tags"],
+                **author,
+                "upvotes": sp["up"],
+                "downvotes": sp["down"],
+                "voters": [],
+                "replies_count": sp.get("replies", 0),
+                "views": sp["views"],
+                "pinned": sp.get("pinned", False),
+                "created_at": now,
+                "updated_at": now,
+                "hot_score": 0.0,
+            }
+            post["hot_score"] = _hot_score(post)
+            await db.forum_posts.insert_one(post)
+            # Seed 3 replies per post for realistic thread
+            for j in range(3):
+                r_author = _author("provider" if j % 2 == 0 else "customer", i + j + 1)
+                await db.forum_replies.insert_one({
+                    "reply_id": f"fr_{uuid.uuid4().hex[:12]}",
+                    "post_id": post["post_id"],
+                    "parent_reply_id": None,
+                    **r_author,
+                    "body": replies_pool[(i + j) % len(replies_pool)],
+                    "upvotes": max(1, sp["up"] // (6 + j * 4)),
+                    "downvotes": 0,
+                    "voters": [],
+                    "created_at": now + timedelta(hours=j * 2 + 1),
+                })
+
+        for i, sp in enumerate(customer_seed):
+            author = _author("customer", i)
+            now = datetime.now(timezone.utc) - timedelta(days=sp["days_ago"])
+            post = {
+                "post_id": f"fp_{uuid.uuid4().hex[:12]}",
+                "audience": "customer",
+                "category": sp["category"],
+                "title": sp["title"],
+                "body": sp["body"],
+                "tags": sp["tags"],
+                **author,
+                "upvotes": sp["up"],
+                "downvotes": sp["down"],
+                "voters": [],
+                "replies_count": sp.get("replies", 0),
+                "views": sp["views"],
+                "pinned": sp.get("pinned", False),
+                "created_at": now,
+                "updated_at": now,
+                "hot_score": 0.0,
+            }
+            post["hot_score"] = _hot_score(post)
+            await db.forum_posts.insert_one(post)
+            for j in range(3):
+                r_author = _author("provider" if j == 1 else "customer", i + j + 2)
+                await db.forum_replies.insert_one({
+                    "reply_id": f"fr_{uuid.uuid4().hex[:12]}",
+                    "post_id": post["post_id"],
+                    "parent_reply_id": None,
+                    **r_author,
+                    "body": replies_pool[(i * 2 + j) % len(replies_pool)],
+                    "upvotes": max(1, sp["up"] // (5 + j * 3)),
+                    "downvotes": 0,
+                    "voters": [],
+                    "created_at": now + timedelta(hours=j * 3 + 2),
+                })
 
 
 @app.on_event("startup")
