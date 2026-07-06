@@ -54,13 +54,13 @@ export default function Referrals() {
         <div className="bg-card border border-dashed border-border rounded-2xl p-12 text-center">
           <Users className="w-10 h-10 mx-auto text-muted-foreground mb-3 opacity-40" />
           <div className="font-medium text-foreground">No incoming referrals</div>
-          <p className="text-sm text-muted-foreground mt-1">When another provider passes a job your way, it'll appear here with full client details.</p>
+          <p className="text-sm text-muted-foreground mt-1">When another provider passes a job your way, it&apos;ll appear here with full client details.</p>
         </div>
       )}
       {tab === 'outgoing' && (
         <div className="bg-card border border-dashed border-border rounded-2xl p-12 text-center">
           <ArrowUpRight className="w-10 h-10 mx-auto text-muted-foreground mb-3 opacity-40" />
-          <div className="font-medium text-foreground">You haven't passed any jobs</div>
+          <div className="font-medium text-foreground">You haven&apos;t passed any jobs</div>
           <p className="text-sm text-muted-foreground mt-1">Not the right fit for a job? Pass it to a trusted mate and earn a 10% referral fee.</p>
         </div>
       )}

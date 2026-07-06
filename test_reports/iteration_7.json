@@ -1,0 +1,35 @@
+{
+  "summary": "Tested iteration 7 backlog: Sidebar refactor (4 files), forum unique-viewer tracking, forum nested replies (backend + frontend UI). All 21 forum backend tests + 12 taxonomy tests passed. Frontend sidebar regression across customer/provider/landlord roles works (all data-testids intact, Switch Account dialog opens + routes to correct dashboard, theme toggle flips html class, view-mode toggle triggers mobile view). Forum nested reply flow works end-to-end: composer visible, top-level reply posts, per-reply Reply button opens threaded composer with '@Author ' pre-filled + scrolls into view, submitted child reply renders indented (marginLeft=16px), Cancel thread resets composer to 'Add your reply'. Post voting still works.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Switch Account Type dialog", "issues": ["Console warning: 'Missing Description or aria-describedby for DialogContent' — should add DialogDescription for a11y compliance."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_forum_new_features.py",
+    "/app/backend/tests/test_forum.py",
+    "/app/backend/tests/test_services_taxonomy.py",
+    "/app/test_reports/pytest/iter7_results.xml"
+  ],
+  "action_items": [
+    "(Minor a11y) Add DialogDescription to SwitchRoleDialog and any other DialogContent that doesn't have one to silence Radix a11y warning."
+  ],
+  "critical_code_review_comments": [
+    "Sidebar refactor is clean — Sidebar.jsx shrunk from ~240 to ~90 lines by extracting SidebarNavSection, SidebarFooter, SwitchRoleDialog. All data-testids preserved and role-specific nav rendering identical. No behavioral regressions observed.",
+    "Backend unique-viewer logic uses $addToSet on viewers set which is atomic and correct. _serialize_post strips 'viewers' before returning — verified no leak.",
+    "ForumPostDetail flattenTree + ReplyItem inline component avoids Babel recursion issue while still rendering nested indent via depth*16px marginLeft. Depth is computed correctly from parent_reply_id chain. Cancel-thread button clears replyTo state cleanly.",
+    "Nested reply Reply button on child reply correctly picks up child's author for @mention. Depth capping is not enforced — very deep chains could produce excessive indentation. Consider Math.min(depth, 6) if needed later."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_forum_new_features.py (new — 6 tests for unique-viewer + nested reply behavior)"
+  ],
+  "success_rate": {"backend": "100% (33/33 tests)", "frontend": "100% of tested flows (sidebar 3 roles, dialog, theme, viewmode, forum nested reply, cancel, vote)"},
+  "test_credentials": "Registered on-the-fly: forumqa-{role}-{ts}-{suffix}@dispatchr.demo / testpass123; UI flow used qa-forum2-{ts}@dispatchr.demo / testpass123.",
+  "seed_data_creation": "Tests create + delete their own posts (TEST_ prefix); no persistent seed data added.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All P1 backlog items from iteration 7 verified: (1) Sidebar refactor - regression clean, data-testids intact for sidebar-nav-*, switch-role-*, sidebar-view-mode-toggle. (2) Forum unique viewer: author views don't increment; first view by new user increments +1; repeat view same user does NOT increment; different users each add +1. viewers field stripped from response. (3) Nested replies: parent_reply_id persisted, GET returns flat list with parent_reply_id populated, frontend flattenTree renders children with depth*16px marginLeft indent. Composer scrolls into view, pre-fills @mention, Cancel thread resets. Only minor a11y warning (missing DialogDescription) — non-blocking."
+}

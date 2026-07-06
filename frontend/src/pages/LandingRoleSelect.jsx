@@ -51,7 +51,7 @@ export default function LandingRoleSelect() {
           </span>
         </h1>
         <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto">
-          Describe what you need — we'll instantly match you with a verified, top-rated local professional.
+          Describe what you need — we&apos;ll instantly match you with a verified, top-rated local professional.
         </p>
 
         <div className="mt-12 text-left space-y-3 max-w-xl mx-auto">

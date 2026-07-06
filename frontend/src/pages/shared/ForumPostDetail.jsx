@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, ArrowUp, ArrowDown, MessageCircle, Eye, Clock, Trash2, Send, Loader2, Tag as TagIcon, Share2, Pin } from 'lucide-react';
+import { ArrowLeft, ArrowUp, ArrowDown, MessageCircle, Eye, Clock, Trash2, Send, Loader2, Tag as TagIcon, Share2, Pin, X } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
@@ -165,6 +165,18 @@ export default function ForumPostDetail() {
     }
   };
 
+  const handleReplyTo = (replyId, authorName) => {
+    setReplyTo(replyId);
+    setReplyText((prev) => (prev ? prev : `@${authorName} `));
+    // Scroll composer into view
+    setTimeout(() => {
+      const el = document.querySelector('[data-testid="forum-composer"]');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const input = document.querySelector('[data-testid="forum-reply-input"]');
+      if (input) input.focus();
+    }, 100);
+  };
+
   if (loading || !data) {
     return <div className="flex items-center justify-center py-24"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
   }
@@ -223,13 +235,18 @@ export default function ForumPostDetail() {
       </article>
 
       {/* REPLY COMPOSER */}
-      <form onSubmit={submitReply} className="mt-6 bg-card border border-border rounded-2xl p-4">
-        <div className="text-sm font-semibold text-foreground mb-2">Add your reply</div>
+      <form onSubmit={submitReply} className="mt-6 bg-card border border-border rounded-2xl p-4" data-testid="forum-composer">
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-sm font-semibold text-foreground">{replyTo ? 'Replying to a comment' : 'Add your reply'}</div>
+          {replyTo && (
+            <button type="button" onClick={() => setReplyTo(null)} className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"><X className="w-3 h-3" /> Cancel thread</button>
+          )}
+        </div>
         <Textarea
           data-testid="forum-reply-input"
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
-          placeholder="Share your experience, ask a follow-up, or offer advice..."
+          placeholder={replyTo ? "Reply to that comment..." : "Share your experience, ask a follow-up, or offer advice..."}
           rows={3}
           required
         />
@@ -241,7 +258,7 @@ export default function ForumPostDetail() {
         </div>
       </form>
 
-      {/* REPLIES */}
+      {/* REPLIES — threaded */}
       <div className="mt-6">
         <div className="text-sm font-semibold text-foreground mb-3">{replies.length} {replies.length === 1 ? 'reply' : 'replies'}</div>
         {replies.length === 0 ? (
@@ -250,24 +267,70 @@ export default function ForumPostDetail() {
             <p className="text-sm text-muted-foreground">Be the first to reply</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {replies.map((r) => (
-              <div key={r.reply_id} data-testid={`forum-reply-${r.reply_id}`} className="bg-card border border-border rounded-2xl p-4 flex gap-3">
-                <VoteBar
-                  vertical
-                  testId={`forum-reply-${r.reply_id}`}
-                  score={r.score}
-                  userVote={r.user_vote}
-                  onVote={(v) => voteReply(r.reply_id, v)}
-                />
-                <div className="flex-1 min-w-0">
-                  <AuthorLine name={r.author_name} role={r.author_role} at={r.created_at} />
-                  <div className="mt-2 text-sm text-foreground whitespace-pre-wrap leading-relaxed">{r.body}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <ReplyTree replies={replies} onVote={voteReply} onReplyTo={handleReplyTo} />
         )}
+      </div>
+    </div>
+  );
+}
+
+// Flatten the reply tree into a rendering list with depth info.
+function flattenTree(replies) {
+  const byId = new Map();
+  replies.forEach((r) => byId.set(r.reply_id, { ...r, children: [] }));
+  const roots = [];
+  byId.forEach((node) => {
+    const parentId = node.parent_reply_id;
+    if (parentId && byId.has(parentId)) byId.get(parentId).children.push(node);
+    else roots.push(node);
+  });
+  const flat = [];
+  const walk = (nodes, depth) => {
+    nodes.forEach((n) => {
+      flat.push({ node: n, depth });
+      if (n.children.length) walk(n.children, Math.min(depth + 1, 4));
+    });
+  };
+  walk(roots, 0);
+  return flat;
+}
+
+function ReplyTree({ replies, onVote, onReplyTo }) {
+  const flat = flattenTree(replies);
+  return (
+    <div className="space-y-3">
+      {flat.map(({ node, depth }) => (
+        <ReplyItem key={node.reply_id} node={node} depth={depth} onVote={onVote} onReplyTo={onReplyTo} />
+      ))}
+    </div>
+  );
+}
+
+function ReplyItem({ node, depth, onVote, onReplyTo }) {
+  const indent = depth > 0 ? { marginLeft: depth * 16 } : undefined;
+  return (
+    <div style={indent} className={depth > 0 ? 'relative pl-4 border-l-2 border-border' : ''}>
+      <div className="bg-card border border-border rounded-2xl p-4 flex gap-3" data-testid={`forum-reply-${node.reply_id}`}>
+        <VoteBar
+          vertical
+          testId={`forum-reply-${node.reply_id}`}
+          score={node.score}
+          userVote={node.user_vote}
+          onVote={(v) => onVote(node.reply_id, v)}
+        />
+        <div className="flex-1 min-w-0">
+          <AuthorLine name={node.author_name} role={node.author_role} at={node.created_at} />
+          <div className="mt-2 text-sm text-foreground whitespace-pre-wrap leading-relaxed">{node.body}</div>
+          <div className="mt-2">
+            <button
+              onClick={() => onReplyTo(node.reply_id, node.author_name)}
+              data-testid={`forum-reply-reply-${node.reply_id}`}
+              className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+            >
+              <MessageCircle className="w-3 h-3" /> Reply
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

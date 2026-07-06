@@ -118,8 +118,8 @@ export default function ServicePicker({ open, onOpenChange, serviceType = 'resid
             {filtered.length === 0 ? (
               <div className="py-12 text-center text-muted-foreground">
                 <Search className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <div className="text-sm">No services match "{q}"</div>
-                <p className="text-xs mt-1">Try broader terms like "electrical" or "kitchen"</p>
+                <div className="text-sm">No services match &ldquo;{q}&rdquo;</div>
+                <p className="text-xs mt-1">Try broader terms like &ldquo;electrical&rdquo; or &ldquo;kitchen&rdquo;</p>
               </div>
             ) : (
               <div className="space-y-4">

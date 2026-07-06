@@ -114,7 +114,7 @@ export default function PostJob() {
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
       <h1 className="text-3xl font-bold text-foreground">Post a Job</h1>
-      <p className="text-muted-foreground mt-1">Tell us the details — we'll match you with the right pros.</p>
+      <p className="text-muted-foreground mt-1">Tell us the details — we&apos;ll match you with the right pros.</p>
 
       <form onSubmit={submit} className="mt-6 space-y-5 bg-card border border-border rounded-2xl p-6">
         {/* Service type toggle */}

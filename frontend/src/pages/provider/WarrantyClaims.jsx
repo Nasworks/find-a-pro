@@ -50,7 +50,7 @@ export default function WarrantyClaims() {
         <Shield className="w-5 h-5 text-primary shrink-0 mt-0.5" />
         <div className="text-sm">
           <div className="font-semibold text-foreground">Dispatchr Warranty Protection</div>
-          <p className="text-muted-foreground mt-1">All jobs booked through Dispatchr include workmanship warranty. If something's not right, we'll mediate resolution within 5 business days.</p>
+          <p className="text-muted-foreground mt-1">All jobs booked through Dispatchr include workmanship warranty. If something&apos;s not right, we&apos;ll mediate resolution within 5 business days.</p>
         </div>
       </div>
 

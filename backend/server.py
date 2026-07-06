@@ -1637,6 +1637,7 @@ def _serialize_post(post: Dict[str, Any], user_id: Optional[str] = None) -> Dict
                 p["user_vote"] = v.get("value", 0)
                 break
     p.pop("voters", None)
+    p.pop("viewers", None)
     return p
 
 
@@ -1681,13 +1682,18 @@ async def get_forum_post(post_id: str, user=Depends(require_user)):
     audience = _forum_audience(user["role"])
     if post.get("audience") != audience:
         raise HTTPException(status_code=403, detail="Not visible in your community")
-    # increment views (fire and forget)
-    await db.forum_posts.update_one({"post_id": post_id}, {"$inc": {"views": 1}})
-    post["views"] = post.get("views", 0) + 1
+    # Unique-viewer tracking — increment views ONCE per user (author excluded)
+    uid = user["user_id"]
+    if uid != post.get("author_id") and uid not in (post.get("viewers") or []):
+        await db.forum_posts.update_one(
+            {"post_id": post_id},
+            {"$inc": {"views": 1}, "$addToSet": {"viewers": uid}},
+        )
+        post["views"] = post.get("views", 0) + 1
     replies = await db.forum_replies.find({"post_id": post_id}).sort("created_at", 1).to_list(500)
     return {
-        "post": _serialize_post(post, user["user_id"]),
-        "replies": [_serialize_reply(r, user["user_id"]) for r in replies],
+        "post": _serialize_post(post, uid),
+        "replies": [_serialize_reply(r, uid) for r in replies],
     }
 
 

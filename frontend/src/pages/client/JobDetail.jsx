@@ -533,7 +533,7 @@ function BidSubmissionDialog({ mode, bid, job, onClose, onSuccess }) {
           <label className="flex items-start gap-3 p-3 rounded-lg bg-muted/40 border border-border cursor-pointer">
             <Checkbox checked={form.acceptTerms} onCheckedChange={(v) => update('acceptTerms', !!v)} className="mt-0.5" />
             <div className="text-xs text-foreground/90">
-              I confirm I am licensed & insured for this work, that my bid is honest and complete, and I agree to Dispatchr's <span className="text-primary">Provider Terms of Service</span> and <span className="text-primary">Escrow Payment Policy</span>.
+              I confirm I am licensed &amp; insured for this work, that my bid is honest and complete, and I agree to Dispatchr&apos;s <span className="text-primary">Provider Terms of Service</span> and <span className="text-primary">Escrow Payment Policy</span>.
             </div>
           </label>
 
