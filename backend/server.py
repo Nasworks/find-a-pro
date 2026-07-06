@@ -64,6 +64,8 @@ class JobPost(BaseModel):
     title: str
     description: str
     category: str
+    subcategory: Optional[str] = None
+    service_type: str = "residential"  # residential | commercial
     location: str = "Auckland"
     budget_min: Optional[float] = None
     budget_max: Optional[float] = None
@@ -78,6 +80,8 @@ class JobCreate(BaseModel):
     title: str
     description: str
     category: str
+    subcategory: Optional[str] = None
+    service_type: str = "residential"
     location: str = "Auckland"
     budget_min: Optional[float] = None
     budget_max: Optional[float] = None
@@ -1327,6 +1331,225 @@ async def job_history(user=Depends(require_user)):
     q = {"$or": [{"client_id": user["user_id"]}, {"provider_id": user["user_id"]}], "status": {"$in": ["done", "paid", "cancelled"]}}
     bookings = await db.bookings.find(q, {"_id": 0}).sort("scheduled_at", -1).to_list(500)
     return bookings
+
+
+# ---------------- COMMERCIAL SERVICES TAXONOMY ----------------
+RESIDENTIAL_TAXONOMY = [
+    {"id": "general-home-maintenance", "name": "General Home Maintenance", "icon": "Home", "color": "#3B82F6", "subs": [
+        "Handyman Services", "Home Repairs", "Property Maintenance",
+        "Preventative Maintenance", "Odd Jobs", "Home Improvements",
+    ]},
+    {"id": "electrical", "name": "Electrical", "icon": "Zap", "color": "#F59E0B", "subs": [
+        "Residential Electrical", "New Wiring & Rewiring", "Lighting Installation",
+        "Power Points & Switches", "Switchboard Upgrades", "EV Charger Installation",
+        "Smoke Alarms", "Fault Finding & Repairs",
+    ]},
+    {"id": "plumbing-gas", "name": "Plumbing & Gas", "icon": "Droplets", "color": "#0EA5E9", "subs": [
+        "Residential Plumbing", "Blocked Drains", "Leak Repairs", "Hot Water Systems",
+        "Tap & Toilet Repairs", "Bathroom Plumbing", "Kitchen Plumbing", "Gas Fitting & Gas Appliances",
+    ]},
+    {"id": "heating-cooling-ventilation", "name": "Heating, Cooling & Ventilation", "icon": "Wind", "color": "#06B6D4", "subs": [
+        "Heat Pump Installation", "Air Conditioning", "Home Ventilation Systems",
+        "Bathroom Extractor Fans", "Ducted Heating", "HVAC Servicing",
+    ]},
+    {"id": "roofing-guttering", "name": "Roofing & Guttering", "icon": "Home", "color": "#EF4444", "subs": [
+        "Roof Repairs", "Roof Replacement", "Gutter Repairs", "Gutter Replacement",
+        "Downpipes", "Roof Leak Repairs", "Skylight Installation",
+    ]},
+    {"id": "carpentry-joinery", "name": "Carpentry & Joinery", "icon": "Hammer", "color": "#A16207", "subs": [
+        "General Carpentry", "Deck Construction", "Pergolas", "Fencing",
+        "Doors", "Windows", "Built-in Cabinets", "Kitchen Cabinetry",
+    ]},
+    {"id": "painting-interior-finishes", "name": "Painting & Interior Finishes", "icon": "Paintbrush", "color": "#EC4899", "subs": [
+        "Interior Painting", "Exterior Painting", "Gib Installation", "Gib Stopping",
+        "Plastering", "Wallpaper Installation", "Ceiling Repairs",
+    ]},
+    {"id": "flooring-tiling", "name": "Flooring & Tiling", "icon": "Grid3x3", "color": "#F97316", "subs": [
+        "Timber Flooring", "Laminate Flooring", "Vinyl Flooring", "Carpet Installation",
+        "Floor Repairs", "Floor & Wall Tiling", "Bathroom Tiling", "Kitchen Splashbacks",
+    ]},
+    {"id": "kitchens-bathrooms-renovations", "name": "Kitchens, Bathrooms & Renovations", "icon": "Sparkles", "color": "#8B5CF6", "subs": [
+        "Kitchen Renovations", "Bathroom Renovations", "Laundry Renovations",
+        "Home Alterations", "Room Additions", "Home Extensions", "Interior Refurbishments",
+    ]},
+    {"id": "concrete-outdoor-construction", "name": "Concrete & Outdoor Construction", "icon": "Layers", "color": "#71717A", "subs": [
+        "Driveways", "Paths", "Concrete Slabs", "Retaining Walls",
+        "Paving", "Excavation", "Site Preparation",
+    ]},
+    {"id": "glass-windows", "name": "Glass & Windows", "icon": "Square", "color": "#0891B2", "subs": [
+        "Glass Replacement", "Double Glazing", "Window Installation",
+        "Shower Glass", "Mirrors", "Glass Balustrades",
+    ]},
+    {"id": "security-smart-home", "name": "Security & Smart Home", "icon": "ShieldCheck", "color": "#7C3AED", "subs": [
+        "CCTV Installation", "Alarm Systems", "Smart Doorbells", "Smart Locks",
+        "Intercom Systems", "Access Control", "Home Automation",
+    ]},
+    {"id": "data-communications", "name": "Data & Communications", "icon": "Router", "color": "#2563EB", "subs": [
+        "Wi-Fi Installation", "Data Cabling", "Fibre Cabling",
+        "TV Wall Mounting", "Home Networking", "Audio & Visual Installation",
+    ]},
+    {"id": "solar-energy", "name": "Solar & Energy", "icon": "Sun", "color": "#10B981", "subs": [
+        "Solar Panel Installation", "Home Battery Installation", "EV Chargers",
+        "Energy Monitoring", "Backup Power Systems", "Solar Maintenance",
+    ]},
+    {"id": "pools-spas-outdoor-living", "name": "Pools, Spas & Outdoor Living", "icon": "Waves", "color": "#0EA5E9", "subs": [
+        "Swimming Pool Installation", "Spa Pool Installation", "Pool Pumps & Filtration",
+        "Outdoor Kitchens", "Outdoor Lighting", "Shade Structures",
+    ]},
+    {"id": "insulation-weatherproofing", "name": "Insulation & Weatherproofing", "icon": "Thermometer", "color": "#65A30D", "subs": [
+        "Ceiling Insulation", "Underfloor Insulation", "Wall Insulation",
+        "Moisture Barriers", "Home Ventilation", "Weatherproofing",
+    ]},
+    {"id": "appliance-installation", "name": "Appliance Installation", "icon": "Refrigerator", "color": "#F59E0B", "subs": [
+        "Ovens & Cooktops", "Dishwashers", "Rangehoods", "Washing Machines",
+        "Dryers", "Waste Disposals", "Water Filters",
+    ]},
+    {"id": "specialist-home-services", "name": "Specialist Home Services", "icon": "HardHat", "color": "#DC2626", "subs": [
+        "Waterproofing", "Asbestos Removal (Licensed)", "Demolition",
+        "Structural Repairs", "Welding & Metal Fabrication", "Accessibility Modifications",
+    ]},
+]
+
+COMMERCIAL_TAXONOMY = [
+    {"id": "building-maintenance", "name": "Building Maintenance", "icon": "Building2", "color": "#3B82F6", "subs": [
+        "General Building Maintenance", "Commercial Handyman", "Building Repairs",
+        "Preventative Maintenance", "Building Alterations", "Minor Commercial Fit-outs",
+    ]},
+    {"id": "electrical", "name": "Electrical", "icon": "Zap", "color": "#F59E0B", "subs": [
+        "Commercial Electrical", "Lighting Installation & Upgrades", "LED Retrofits",
+        "Emergency Lighting", "Switchboard Upgrades", "Power & Data",
+        "EV Charger Installation", "Electrical Fault Finding",
+    ]},
+    {"id": "plumbing-gas", "name": "Plumbing & Gas", "icon": "Droplets", "color": "#0EA5E9", "subs": [
+        "Commercial Plumbing", "Drain Repairs", "Hot Water Systems", "Water Supply",
+        "Pipework", "Bathrooms & Amenities", "Kitchens", "Gas Fitting",
+    ]},
+    {"id": "hvac-mechanical", "name": "HVAC & Mechanical", "icon": "Wind", "color": "#06B6D4", "subs": [
+        "Commercial Air Conditioning", "Heat Pumps", "Ventilation Systems", "Refrigeration",
+        "Extraction Systems", "HVAC Upgrades", "Mechanical Plant Installation",
+    ]},
+    {"id": "roofing-waterproofing", "name": "Roofing & Waterproofing", "icon": "Home", "color": "#EF4444", "subs": [
+        "Roof Repairs", "Roof Replacement", "Commercial Roofing", "Gutters & Downpipes",
+        "Membrane Roofing", "Waterproofing", "Leak Repairs",
+    ]},
+    {"id": "carpentry-joinery", "name": "Carpentry & Joinery", "icon": "Hammer", "color": "#A16207", "subs": [
+        "Commercial Carpentry", "Office Fit-outs", "Doors & Hardware", "Windows",
+        "Partitions", "Custom Joinery", "Cabinetry",
+    ]},
+    {"id": "interior-finishes", "name": "Interior Finishes", "icon": "Paintbrush", "color": "#EC4899", "subs": [
+        "Painting", "Gib Installation", "Plastering", "Ceiling Repairs",
+        "Suspended Ceilings", "Flooring", "Tiling",
+    ]},
+    {"id": "exterior-works", "name": "Exterior Works", "icon": "TreePine", "color": "#65A30D", "subs": [
+        "Cladding", "Facade Repairs", "Concrete Repairs", "Asphalt",
+        "Carparks", "Footpaths", "Retaining Walls", "Fencing & Gates",
+    ]},
+    {"id": "glass-aluminium", "name": "Glass & Aluminium", "icon": "Square", "color": "#0891B2", "subs": [
+        "Commercial Glazing", "Shopfront Glass", "Aluminium Joinery",
+        "Automatic Doors", "Glass Replacement", "Balustrades",
+    ]},
+    {"id": "fire-protection", "name": "Fire Protection", "icon": "Flame", "color": "#DC2626", "subs": [
+        "Fire Alarms", "Fire Sprinklers", "Fire Doors", "Passive Fire Protection",
+        "Fire Compliance Upgrades", "Emergency Lighting",
+    ]},
+    {"id": "security-systems", "name": "Security Systems", "icon": "ShieldCheck", "color": "#7C3AED", "subs": [
+        "CCTV Installation", "Alarm Systems", "Access Control", "Intercom Systems",
+        "Boom Gates", "Security Bollards", "Automatic Gates",
+    ]},
+    {"id": "data-communications", "name": "Data & Communications", "icon": "Router", "color": "#2563EB", "subs": [
+        "Structured Cabling", "Fibre Installation", "Network Cabling",
+        "Server Cabinets", "Wi-Fi Installation", "Communications Infrastructure",
+    ]},
+    {"id": "building-automation", "name": "Building Automation", "icon": "Cpu", "color": "#8B5CF6", "subs": [
+        "Building Management Systems (BMS)", "Smart Lighting", "HVAC Controls",
+        "Energy Monitoring", "Access Automation", "Smart Building Upgrades",
+    ]},
+    {"id": "renewable-energy", "name": "Renewable Energy", "icon": "Sun", "color": "#10B981", "subs": [
+        "Commercial Solar", "Battery Storage", "EV Charging Infrastructure",
+        "Energy Monitoring", "Solar Maintenance",
+    ]},
+    {"id": "renovations-fitouts", "name": "Commercial Renovations & Fit-outs", "icon": "Sparkles", "color": "#F97316", "subs": [
+        "Office Renovations", "Retail Fit-outs", "Hospitality Fit-outs", "Medical Fit-outs",
+        "Warehouse Fit-outs", "Interior Refurbishments", "Building Upgrades",
+        "Accessibility Upgrades",
+    ]},
+]
+
+
+def _slug(s: str) -> str:
+    import re
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+
+
+def _index_taxonomy(taxonomy: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    idx: Dict[str, Dict[str, Any]] = {}
+    for _cat in taxonomy:
+        _cat_slug = _cat["id"]
+        _sub_list = []
+        for _sub in _cat["subs"]:
+            _sub_id = _slug(_sub)
+            _sub_list.append({"id": _sub_id, "name": _sub})
+            idx[f"{_cat_slug}/{_sub_id}"] = {"category_id": _cat_slug, "category_name": _cat["name"], "sub_id": _sub_id, "sub_name": _sub}
+        _cat["subcategories"] = _sub_list
+    return idx
+
+
+COMMERCIAL_TAXONOMY_INDEX = _index_taxonomy(COMMERCIAL_TAXONOMY)
+RESIDENTIAL_TAXONOMY_INDEX = _index_taxonomy(RESIDENTIAL_TAXONOMY)
+
+
+def _taxonomy_payload(taxonomy: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "total_categories": len(taxonomy),
+        "total_subcategories": sum(len(c["subs"]) for c in taxonomy),
+        "categories": [
+            {
+                "id": c["id"],
+                "name": c["name"],
+                "icon": c["icon"],
+                "color": c["color"],
+                "subcategories": c["subcategories"],
+            } for c in taxonomy
+        ],
+    }
+
+
+@api.get("/services/commercial-taxonomy")
+async def commercial_taxonomy():
+    """15-category commercial services taxonomy with all subcategories."""
+    return _taxonomy_payload(COMMERCIAL_TAXONOMY)
+
+
+@api.get("/services/residential-taxonomy")
+async def residential_taxonomy():
+    """18-category residential home services taxonomy — homeowners, tenants, landlords, holiday-home owners."""
+    return _taxonomy_payload(RESIDENTIAL_TAXONOMY)
+
+
+@api.get("/services/taxonomy/{service_type}")
+async def taxonomy_by_type(service_type: str):
+    """Unified entry — pass 'residential' or 'commercial'."""
+    if service_type == "commercial":
+        return _taxonomy_payload(COMMERCIAL_TAXONOMY)
+    if service_type == "residential":
+        return _taxonomy_payload(RESIDENTIAL_TAXONOMY)
+    raise HTTPException(status_code=404, detail="Unknown service_type. Use 'residential' or 'commercial'.")
+
+
+@api.get("/services/commercial-taxonomy/{category_id}")
+async def commercial_taxonomy_category(category_id: str):
+    for c in COMMERCIAL_TAXONOMY:
+        if c["id"] == category_id:
+            return {"id": c["id"], "name": c["name"], "icon": c["icon"], "color": c["color"], "subcategories": c["subcategories"]}
+    raise HTTPException(status_code=404, detail="Category not found")
+
+
+@api.get("/services/residential-taxonomy/{category_id}")
+async def residential_taxonomy_category(category_id: str):
+    for c in RESIDENTIAL_TAXONOMY:
+        if c["id"] == category_id:
+            return {"id": c["id"], "name": c["name"], "icon": c["icon"], "color": c["color"], "subcategories": c["subcategories"]}
+    raise HTTPException(status_code=404, detail="Category not found")
 
 
 # ---------------- FORUM ----------------

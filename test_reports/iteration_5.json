@@ -1,0 +1,34 @@
+{
+  "summary": "Full backend + frontend verification of ServicePicker feature and expanded job model. Backend: 12/12 pytest tests PASS — commercial taxonomy has exactly 15 categories / 102 subcategories, residential has 18 categories / 122 subcategories, unified /taxonomy/{residential,commercial} alias works, /taxonomy/invalid returns 404, per-category endpoints work (electrical=8 subs, plumbing-gas=8 subs including blocked-drains + leak-repairs), unknown category returns 404, all icon strings are valid lucide-react exports, legacy /api/categories still returns residential categories, POST /api/jobs accepts new subcategory+service_type fields and they persist correctly via GET /api/jobs/{id}, subcategory is optional (works when omitted). Frontend (Playwright on preview URL): ClientHome residential/commercial toggle switches quickTags AND picker mode, 'Browse all services' opens correct ServicePicker (service-picker-residential/commercial dialog root, 240px sidebar categories, 2-column subcategory grid), search 'heat' produces highlight <mark> elements, search 'roof' finds roof-repairs, X clears search, subcategory click closes dialog and shows picked chip with category color, PostJob defaults residential for landlord and commercial for both facilities+property, end-to-end residential (landlord → Plumbing & Gas → Blocked Drains) and commercial (facilities → HVAC & Mechanical → Commercial Air Conditioning) job creation both persist category/subcategory/service_type correctly, switching service type resets category, community forum regression still loads. Only observation: harmless React Radix dialog aria-describedby warning in console for ServicePicker DialogContent.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ServicePicker dialog", "issues": ["Radix DialogContent missing DialogDescription / aria-describedby — console warning; accessibility nit, not blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_services_taxonomy.py",
+    "/app/test_reports/pytest/services_taxonomy_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL a11y: add a <DialogDescription> (or aria-describedby={undefined} suppressor) inside ServicePicker's DialogContent to silence Radix warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py is ~2200 lines — the two taxonomy blocks (~140 lines) are a good candidate to move to backend/taxonomies.py to keep the router focused.",
+    "GET /api/jobs/{id} returns nested {job, bids} while GET /api/jobs/mine returns flat job objects — inconsistent shape may confuse consumers.",
+    "POST /api/jobs does not validate that category/subcategory ids exist in the corresponding taxonomy — a bad payload with typos will silently persist. Consider validating against COMMERCIAL_TAXONOMY_INDEX / RESIDENTIAL_TAXONOMY_INDEX.",
+    "POST /api/jobs also doesn't validate service_type ∈ {residential, commercial}. Recommend Pydantic Literal type.",
+    "ClientHome quickPick uses the label (e.g. 'Leaking tap') as subcategory_name in state, but the true taxonomy names differ (e.g. 'Leak Repairs') — the chip on PostJob will show the shortcut label rather than the canonical service name. Minor UX inconsistency."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_services_taxonomy.py (new)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% of requested flows"},
+  "test_credentials": "Fresh users registered per run: qa-svc-{role}-{ts}@dispatchr.demo / testpass123 (roles: customer, landlord, facilities, property).",
+  "seed_data_creation": "3 TEST_-prefixed jobs created by pytest customer session (persisted, easily identifiable) + 2 TEST_ jobs from Playwright landlord/facilities users.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "ServicePicker uses data-testid service-picker-<residential|commercial> for dialog root, service-picker-cat-<id>, service-picker-sub-<catId>-<subId>, service-picker-search. PostJob uses post-job-{open-picker, service-type-residential|commercial, title, description, location, submit}. GET /api/jobs/{id} returns {job, bids} (nested), not the flat job. Legacy /api/categories still returns residential-style categories. Taxonomy endpoints do NOT validate category or service_type on POST /api/jobs — bad ids will persist silently."
+}

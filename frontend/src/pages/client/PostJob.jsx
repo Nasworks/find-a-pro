@@ -1,26 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Loader2 } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
+import { ArrowLeft, MapPin, Loader2, Home as HomeIcon, Building2, ChevronRight, Sparkles, Layers } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { Label } from '../../components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { RadioGroup, RadioGroupItem } from '../../components/ui/radio-group';
+import { Badge } from '../../components/ui/badge';
+import ServicePicker from '../../components/ServicePicker';
+import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/api';
 import { toast } from 'sonner';
+
+// Roles that default to commercial when they hit Post-a-Job
+const COMMERCIAL_DEFAULT_ROLES = new Set(['facilities', 'property']);
 
 export default function PostJob() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const preset = location.state || {};
-  const [categories, setCategories] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const initialServiceType = preset.propertyType
+    || preset.service_type
+    || (user?.role && COMMERCIAL_DEFAULT_ROLES.has(user.role) ? 'commercial' : 'residential');
 
   const [form, setForm] = useState({
-    title: '',
+    title: preset.title || '',
     description: preset.description || '',
+    service_type: initialServiceType,
     category: preset.category || '',
+    category_name: preset.category_name || '',
+    category_icon: preset.category_icon || '',
+    category_color: preset.category_color || '',
+    subcategory: preset.subcategory || '',
+    subcategory_name: preset.subcategory_name || '',
     location: 'Auckland',
     budget_min: '',
     budget_max: '',
@@ -31,27 +48,65 @@ export default function PostJob() {
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  useEffect(() => {
-    api.get('/categories').then((r) => setCategories(r.data));
-  }, []);
+  const changeServiceType = (t) => {
+    // Reset category when switching types (taxonomies differ)
+    setForm((f) => ({
+      ...f,
+      service_type: t,
+      category: '',
+      category_name: '',
+      category_icon: '',
+      category_color: '',
+      subcategory: '',
+      subcategory_name: '',
+    }));
+  };
+
+  const handleServicePicked = (sel) => {
+    setForm((f) => ({
+      ...f,
+      category: sel.category_id,
+      category_name: sel.category_name,
+      category_icon: sel.category_icon,
+      category_color: sel.category_color,
+      subcategory: sel.subcategory_id,
+      subcategory_name: sel.subcategory_name,
+    }));
+  };
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.title || !form.category) { toast.error('Please fill in title and category'); return; }
+    if (!form.title || !form.category) {
+      toast.error('Please pick a service and enter a title');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
-        ...form,
+        title: form.title,
+        description: form.description,
+        category: form.category,
+        subcategory: form.subcategory || null,
+        service_type: form.service_type,
+        location: form.location,
         budget_min: form.budget_min ? Number(form.budget_min) : null,
         budget_max: form.budget_max ? Number(form.budget_max) : null,
+        urgency: form.urgency,
+        mode: form.mode,
+        photos: form.photos,
       };
       const res = await api.post('/jobs', payload);
       toast.success('Job posted — pros will be notified');
       navigate(`/jobs/${res.data.job_id}`);
     } catch {
       toast.error('Failed to post job');
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const CategoryIcon = form.category_icon && LucideIcons[form.category_icon] ? LucideIcons[form.category_icon] : Layers;
+  const serviceTypeLabel = form.service_type === 'commercial' ? 'Commercial' : 'Residential';
 
   return (
     <div className="max-w-2xl mx-auto p-6">
@@ -61,32 +116,88 @@ export default function PostJob() {
       <h1 className="text-3xl font-bold text-foreground">Post a Job</h1>
       <p className="text-muted-foreground mt-1">Tell us the details — we'll match you with the right pros.</p>
 
-      <form onSubmit={submit} className="mt-8 space-y-5 bg-card border border-border rounded-2xl p-6">
+      <form onSubmit={submit} className="mt-6 space-y-5 bg-card border border-border rounded-2xl p-6">
+        {/* Service type toggle */}
         <div>
-          <Label>Job title</Label>
-          <Input value={form.title} onChange={(e) => update('title', e.target.value)} placeholder="e.g. Fix leaking kitchen tap" required className="mt-1.5" />
+          <Label>Property type</Label>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              data-testid="post-job-service-type-residential"
+              onClick={() => changeServiceType('residential')}
+              className={`p-3 rounded-xl border-2 text-left transition-all ${form.service_type === 'residential' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}
+            >
+              <div className="flex items-center gap-2">
+                <HomeIcon className={`w-4 h-4 ${form.service_type === 'residential' ? 'text-primary' : 'text-muted-foreground'}`} />
+                <span className="text-sm font-semibold text-foreground">Residential</span>
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">Homes, tenants, holiday rentals</div>
+            </button>
+            <button
+              type="button"
+              data-testid="post-job-service-type-commercial"
+              onClick={() => changeServiceType('commercial')}
+              className={`p-3 rounded-xl border-2 text-left transition-all ${form.service_type === 'commercial' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}
+            >
+              <div className="flex items-center gap-2">
+                <Building2 className={`w-4 h-4 ${form.service_type === 'commercial' ? 'text-primary' : 'text-muted-foreground'}`} />
+                <span className="text-sm font-semibold text-foreground">Commercial</span>
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">Offices, retail, industrial, facilities</div>
+            </button>
+          </div>
+        </div>
+
+        {/* SERVICE PICKER TRIGGER */}
+        <div>
+          <Label>Service</Label>
+          <button
+            type="button"
+            data-testid="post-job-open-picker"
+            onClick={() => setPickerOpen(true)}
+            className={`mt-1.5 w-full flex items-center gap-3 p-3.5 rounded-xl border transition-colors text-left ${form.category ? 'border-primary/40 bg-primary/5' : 'border-border hover:border-primary/40'}`}
+          >
+            {form.category ? (
+              <>
+                <div className="rounded-lg flex items-center justify-center text-white shrink-0" style={{ backgroundColor: form.category_color || '#3B82F6', width: 36, height: 36 }}>
+                  <CategoryIcon className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-muted-foreground">{form.category_name}</div>
+                  <div className="text-sm font-semibold text-foreground truncate">{form.subcategory_name || 'Any service in this category'}</div>
+                </div>
+                <Badge variant="outline" className="ml-auto text-xs">Change</Badge>
+              </>
+            ) : (
+              <>
+                <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-foreground">Choose a service</div>
+                  <div className="text-xs text-muted-foreground">Browse {serviceTypeLabel} categories &amp; subcategories</div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </>
+            )}
+          </button>
         </div>
 
         <div>
-          <Label>Category</Label>
-          <Select value={form.category} onValueChange={(v) => update('category', v)}>
-            <SelectTrigger className="mt-1.5"><SelectValue placeholder="Choose a category" /></SelectTrigger>
-            <SelectContent>
-              {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <Label>Job title</Label>
+          <Input data-testid="post-job-title" value={form.title} onChange={(e) => update('title', e.target.value)} placeholder="e.g. Fix leaking kitchen tap" required className="mt-1.5" />
         </div>
 
         <div>
           <Label>Description</Label>
-          <Textarea value={form.description} onChange={(e) => update('description', e.target.value)} rows={4} placeholder="Describe the problem or work needed" required className="mt-1.5" />
+          <Textarea data-testid="post-job-description" value={form.description} onChange={(e) => update('description', e.target.value)} rows={4} placeholder="Describe the problem or work needed" required className="mt-1.5" />
         </div>
 
         <div>
           <Label>Location</Label>
           <div className="relative mt-1.5">
             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input value={form.location} onChange={(e) => update('location', e.target.value)} className="pl-9" />
+            <Input data-testid="post-job-location" value={form.location} onChange={(e) => update('location', e.target.value)} className="pl-9" />
           </div>
         </div>
 
@@ -139,11 +250,19 @@ export default function PostJob() {
 
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" onClick={() => navigate(-1)} className="flex-1">Cancel</Button>
-          <Button type="submit" disabled={saving} className="flex-1">
+          <Button data-testid="post-job-submit" type="submit" disabled={saving} className="flex-1">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post Job'}
           </Button>
         </div>
       </form>
+
+      <ServicePicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        serviceType={form.service_type}
+        value={form.category ? { category_id: form.category, subcategory_id: form.subcategory } : undefined}
+        onSelect={handleServicePicked}
+      />
     </div>
   );
 }

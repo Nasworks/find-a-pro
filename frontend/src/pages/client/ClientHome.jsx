@@ -1,40 +1,72 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, MessageSquare, ClipboardList, Camera, Mic, Home as HomeIcon, Building, Sparkles, ArrowRight, ChevronRight, Wrench, Trees, Wind, Hammer, Paintbrush, Refrigerator, Truck, Bug, Search } from 'lucide-react';
+import { Zap, MessageSquare, ClipboardList, Camera, Mic, Home as HomeIcon, Building, Sparkles, ArrowRight, Layers, Wrench, Search } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
+import ServicePicker from '../../components/ServicePicker';
 import api from '../../lib/api';
 
-const iconMap = { Wrench, Zap, Sparkles, Trees, Wind, Hammer, Paintbrush, Home: HomeIcon, Refrigerator, Truck, Bug };
+const RESIDENTIAL_QUICK = [
+  { label: 'Leaking tap', cat: 'plumbing-gas', sub: 'leak-repairs' },
+  { label: 'Blocked drain', cat: 'plumbing-gas', sub: 'blocked-drains' },
+  { label: 'Heat pump install', cat: 'heating-cooling-ventilation', sub: 'heat-pump-installation' },
+  { label: 'Interior painting', cat: 'painting-interior-finishes', sub: 'interior-painting' },
+  { label: 'Roof repair', cat: 'roofing-guttering', sub: 'roof-repairs' },
+  { label: 'Handyman', cat: 'general-home-maintenance', sub: 'handyman-services' },
+];
 
-const quickTags = [
-  { label: 'Leaking tap', cat: 'plumbing' },
-  { label: 'House clean', cat: 'cleaning' },
-  { label: 'Electrician', cat: 'electrical' },
-  { label: 'Lawn mowing', cat: 'lawn' },
-  { label: 'Heat pump', cat: 'hvac' },
-  { label: 'Painting', cat: 'painting' },
+const COMMERCIAL_QUICK = [
+  { label: 'LED retrofit', cat: 'electrical', sub: 'led-retrofits' },
+  { label: 'HVAC service', cat: 'hvac-mechanical', sub: 'commercial-air-conditioning' },
+  { label: 'Roof leak', cat: 'roofing-waterproofing', sub: 'leak-repairs' },
+  { label: 'CCTV install', cat: 'security-systems', sub: 'cctv-installation' },
+  { label: 'Office fit-out', cat: 'renovations-fitouts', sub: 'office-renovations' },
+  { label: 'Handyman', cat: 'building-maintenance', sub: 'commercial-handyman' },
 ];
 
 export default function ClientHome() {
   const [propertyType, setPropertyType] = useState('residential');
   const [description, setDescription] = useState('');
-  const [categories, setCategories] = useState([]);
-  const [showAllCats, setShowAllCats] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [picked, setPicked] = useState(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    api.get('/categories').then((r) => setCategories(r.data)).catch(() => {});
-  }, []);
-
   const proceed = (mode) => {
-    navigate('/post-job', { state: { description, propertyType, mode } });
+    navigate('/post-job', {
+      state: {
+        description,
+        propertyType,
+        mode,
+        ...(picked ? {
+          category: picked.category_id,
+          category_name: picked.category_name,
+          category_icon: picked.category_icon,
+          category_color: picked.category_color,
+          subcategory: picked.subcategory_id,
+          subcategory_name: picked.subcategory_name,
+        } : {}),
+      },
+    });
   };
 
-  const quickPick = (cat) => {
-    navigate('/post-job', { state: { category: cat, propertyType } });
+  const quickPick = (q) => {
+    navigate('/post-job', {
+      state: {
+        propertyType,
+        category: q.cat,
+        subcategory: q.sub,
+        subcategory_name: q.label,
+      },
+    });
   };
+
+  const changePropertyType = (t) => {
+    setPropertyType(t);
+    setPicked(null); // taxonomies differ
+  };
+
+  const quickTags = propertyType === 'commercial' ? COMMERCIAL_QUICK : RESIDENTIAL_QUICK;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 p-6 lg:p-10 max-w-7xl mx-auto">
@@ -44,16 +76,16 @@ export default function ClientHome() {
             Your home, managed <span className="bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">intelligently.</span>
           </h1>
           <p className="mt-4 text-muted-foreground max-w-2xl">
-            Describe what you need — we'll instantly match you with a verified, top-rated local professional.
+            Describe what you need — we&apos;ll instantly match you with a verified, top-rated local professional.
           </p>
         </div>
 
         <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
           <div className="flex gap-2 mb-4">
-            <button onClick={() => setPropertyType('residential')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${propertyType === 'residential' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'}`}>
+            <button data-testid="clienthome-type-residential" onClick={() => changePropertyType('residential')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${propertyType === 'residential' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'}`}>
               <HomeIcon className="w-3.5 h-3.5 inline mr-1.5" /> Residential
             </button>
-            <button onClick={() => setPropertyType('commercial')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${propertyType === 'commercial' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'}`}>
+            <button data-testid="clienthome-type-commercial" onClick={() => changePropertyType('commercial')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${propertyType === 'commercial' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'}`}>
               <Building className="w-3.5 h-3.5 inline mr-1.5" /> Commercial
             </button>
           </div>
@@ -69,29 +101,28 @@ export default function ClientHome() {
           </div>
 
           <div className="mt-5 pt-5 border-t border-border">
+            {picked && (
+              <div className="mb-4 flex items-center gap-3 p-3 rounded-xl border border-primary/40 bg-primary/5">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0" style={{ backgroundColor: picked.category_color }}>
+                  <Wrench className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-muted-foreground">{picked.category_name}</div>
+                  <div className="text-sm font-semibold text-foreground truncate">{picked.subcategory_name}</div>
+                </div>
+                <button onClick={() => setPicked(null)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-accent">Clear</button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {quickTags.map((t) => (
-                <button key={t.label} onClick={() => quickPick(t.cat)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-sm text-foreground transition-colors">
+                <button key={t.label} data-testid={`clienthome-quick-${t.sub}`} onClick={() => quickPick(t)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-sm text-foreground transition-colors">
                   <span>{t.label}</span>
                 </button>
               ))}
             </div>
-            <button onClick={() => setShowAllCats(!showAllCats)} className="mt-4 inline-flex items-center gap-2 text-sm text-primary font-medium hover:underline">
-              Browse all categories <ChevronRight className={`w-4 h-4 transition-transform ${showAllCats ? 'rotate-90' : ''}`} />
+            <button data-testid="clienthome-browse-services" onClick={() => setPickerOpen(true)} className="mt-4 inline-flex items-center gap-2 text-sm text-primary font-medium hover:underline">
+              <Layers className="w-4 h-4" /> Browse all {propertyType === 'commercial' ? '100+ commercial' : '120+ residential'} services
             </button>
-            {showAllCats && (
-              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                {categories.map((c) => {
-                  const Icon = iconMap[c.icon] || Wrench;
-                  return (
-                    <button key={c.id} onClick={() => quickPick(c.id)} className="flex items-center gap-2 p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-accent transition-colors text-left">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: c.color + '20', color: c.color }}><Icon className="w-4 h-4" /></div>
-                      <span className="text-sm font-medium text-foreground">{c.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </div>
 
@@ -175,6 +206,14 @@ export default function ClientHome() {
           <div className="mt-3 text-xs">© 2026 Dispatchr. All rights reserved.</div>
         </div>
       </aside>
+
+      <ServicePicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        serviceType={propertyType}
+        value={picked ? { category_id: picked.category_id, subcategory_id: picked.subcategory_id } : undefined}
+        onSelect={(sel) => setPicked(sel)}
+      />
     </div>
   );
 }
