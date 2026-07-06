@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Bell, ShoppingCart, Search } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
+import ViewModeToggle from '../ViewModeToggle';
 
 export default function TopBar() {
   const { user } = useAuth();
@@ -18,6 +19,7 @@ export default function TopBar() {
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <ViewModeToggle />
         <Link to="/cart" className="relative p-2 rounded-lg hover:bg-accent transition-colors">
           <ShoppingCart className="w-5 h-5 text-muted-foreground" />
           {count > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">{count}</span>}

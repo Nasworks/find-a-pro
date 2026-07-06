@@ -100,3 +100,57 @@ code {
   50% { opacity: 0.3; }
 }
 .pulse-dot { animation: pulse-dot 1.5s infinite; }
+
+/* ---------------- MOBILE VIEW MODE SHELL ---------------- */
+/* When view mode is "mobile", clamp app to a phone-sized viewport with a subtle device frame.
+   Below 768px we bypass the frame and use full width. */
+.mobile-viewport-wrapper {
+  min-height: 100vh;
+  background: linear-gradient(135deg, hsl(var(--muted) / 0.6) 0%, hsl(var(--background)) 50%, hsl(var(--muted) / 0.6) 100%);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 0;
+}
+.mobile-viewport-inner {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  background: hsl(var(--background));
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+@media (min-width: 768px) {
+  .mobile-viewport-wrapper {
+    padding: 24px 0;
+  }
+  .mobile-viewport-inner {
+    max-width: 430px;
+    min-height: calc(100vh - 48px);
+    border-radius: 40px;
+    box-shadow: 0 24px 80px -20px rgba(0,0,0,0.35), 0 8px 32px -8px rgba(0,0,0,0.15);
+    overflow: hidden;
+    border: 10px solid hsl(var(--foreground) / 0.06);
+  }
+  .mobile-viewport-inner > header {
+    border-top-left-radius: 30px;
+    border-top-right-radius: 30px;
+  }
+}
+/* Hide the wide horizontal search on TopBar when in a narrow container */
+.mobile-viewport-inner input[type="text"] {
+  font-size: 16px; /* prevent iOS zoom */
+}
+/* Compact spacing helpers for content inside mobile shell */
+.mobile-viewport-inner .p-6 { padding: 1rem !important; }
+.mobile-viewport-inner .p-8 { padding: 1.25rem !important; }
+.mobile-viewport-inner .max-w-7xl { max-width: 100% !important; }
+.mobile-viewport-inner .max-w-6xl { max-width: 100% !important; }
+.mobile-viewport-inner .max-w-4xl { max-width: 100% !important; }
+.mobile-viewport-inner .max-w-2xl { max-width: 100% !important; }
+/* Hide wide-only sidebars in forum/marketplace when in mobile shell */
+.mobile-viewport-inner .lg\:grid-cols-\[240px_1fr_260px\] { grid-template-columns: 1fr !important; }
+.mobile-viewport-inner .lg\:grid-cols-\[240px_1fr\] { grid-template-columns: 1fr !important; }
+.mobile-viewport-inner aside.hidden.lg\:block { display: none !important; }
+

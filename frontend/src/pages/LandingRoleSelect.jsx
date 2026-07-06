@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { User, Wrench, Building2, Shield, KeyRound, Landmark, ArrowRight, ChevronDown } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useTheme } from '../context/ThemeContext';
+import ViewModeToggle from '../components/ViewModeToggle';
 import Logo from '../components/Logo';
 
 const roles = [
@@ -27,7 +28,8 @@ export default function LandingRoleSelect() {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/30">
       <div className="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
         <Logo />
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <ViewModeToggle />
           <button onClick={toggle} className="text-sm text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg hover:bg-accent transition-colors">
             {theme === 'dark' ? 'Light mode' : 'Dark mode'}
           </button>

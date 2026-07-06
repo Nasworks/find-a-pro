@@ -4,6 +4,7 @@ import './App.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { CartProvider } from './context/CartContext';
+import { ViewModeProvider } from './context/ViewModeContext';
 import { Toaster } from './components/ui/sonner';
 
 import LandingRoleSelect from './pages/LandingRoleSelect';
@@ -155,16 +156,18 @@ function AppRouter() {
 function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <CartProvider>
-          <div className="App">
-            <BrowserRouter>
-              <AppRouter />
-              <Toaster position="top-right" richColors />
-            </BrowserRouter>
-          </div>
-        </CartProvider>
-      </AuthProvider>
+      <ViewModeProvider>
+        <AuthProvider>
+          <CartProvider>
+            <div className="App">
+              <BrowserRouter>
+                <AppRouter />
+                <Toaster position="top-right" richColors />
+              </BrowserRouter>
+            </div>
+          </CartProvider>
+        </AuthProvider>
+      </ViewModeProvider>
     </ThemeProvider>
   );
 }

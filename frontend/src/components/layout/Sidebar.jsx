@@ -1,9 +1,10 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, LogOut, ChevronLeft, ChevronRight, Sun, Moon, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, Shield, FileText, Wrench, Repeat, HardHat, Radio, History, Share2, Crown, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound } from 'lucide-react';
+import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, LogOut, ChevronLeft, ChevronRight, Sun, Moon, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, Shield, FileText, Wrench, Repeat, HardHat, Radio, History, Share2, Crown, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Smartphone } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useCart } from '../../context/CartContext';
+import { useViewMode } from '../../context/ViewModeContext';
 import Logo from '../Logo';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
@@ -126,9 +127,10 @@ const roles = [
   { id: 'insurance', label: 'Insurance', icon: ShieldIcon, color: 'bg-teal-500' },
 ];
 
-export default function Sidebar({ collapsed, setCollapsed }) {
+export default function Sidebar({ collapsed, setCollapsed, embedded = false, onNavigate }) {
   const { user, logout, switchRole } = useAuth();
   const { theme, toggle } = useTheme();
+  const { toggle: toggleViewMode } = useViewMode();
   const navigate = useNavigate();
   const nav = roleNav[user?.role] || clientNav;
   const [switchOpen, setSwitchOpen] = React.useState(false);
@@ -152,18 +154,20 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   const doLogout = async () => { await logout(); navigate('/'); };
 
   return (
-    <aside className={`${collapsed ? 'w-16' : 'w-64'} shrink-0 border-r border-border bg-card flex flex-col transition-all duration-200 sticky top-0 h-screen`}>
-      <div className="h-16 px-4 border-b border-border flex items-center justify-between">
-        {collapsed ? (
-          <div className="mx-auto"><Logo showText={false} size="sm" /></div>
-        ) : (
-          <Logo />
-        )}
-        <button onClick={() => setCollapsed(!collapsed)} className={`text-muted-foreground hover:text-foreground p-1 rounded-md hover:bg-accent ${collapsed ? 'hidden' : ''}`}>
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-      </div>
-      {collapsed && (
+    <aside className={`${embedded ? 'w-full h-full flex-1' : `${collapsed ? 'w-16' : 'w-64'} sticky top-0 h-screen`} shrink-0 border-r border-border bg-card flex flex-col transition-all duration-200`}>
+      {!embedded && (
+        <div className="h-16 px-4 border-b border-border flex items-center justify-between">
+          {collapsed ? (
+            <div className="mx-auto"><Logo showText={false} size="sm" /></div>
+          ) : (
+            <Logo />
+          )}
+          <button onClick={() => setCollapsed(!collapsed)} className={`text-muted-foreground hover:text-foreground p-1 rounded-md hover:bg-accent ${collapsed ? 'hidden' : ''}`}>
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+      {!embedded && collapsed && (
         <button onClick={() => setCollapsed(false)} className="mx-auto mt-2 text-muted-foreground hover:text-foreground p-1 rounded-md hover:bg-accent">
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -175,7 +179,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
             {!collapsed && <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{sec.section}</div>}
             <div className="space-y-0.5">
               {sec.items.map((it) => (
-                <NavLink key={it.to} to={it.to} data-testid={`sidebar-nav-${it.label.toLowerCase().replace(/\s+&\s+/g, '-').replace(/\s+/g, '-')}`} className={({ isActive }) => `group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${it.highlight ? 'bg-primary text-primary-foreground hover:bg-primary/90 justify-center shadow-sm shadow-primary/20' : isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}>
+                <NavLink key={it.to} to={it.to} onClick={() => onNavigate?.()} data-testid={`sidebar-nav-${it.label.toLowerCase().replace(/\s+&\s+/g, '-').replace(/\s+/g, '-')}`} className={({ isActive }) => `group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${it.highlight ? 'bg-primary text-primary-foreground hover:bg-primary/90 justify-center shadow-sm shadow-primary/20' : isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}>
                   <it.icon className="w-4 h-4 shrink-0" />
                   {!collapsed && <span className="truncate">{it.label}</span>}
                 </NavLink>
@@ -216,6 +220,11 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         <button onClick={toggle} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
           {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           {!collapsed && <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
+        </button>
+
+        <button data-testid="sidebar-view-mode-toggle" onClick={() => { toggleViewMode(); toast.success('Switched to mobile view'); }} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+          <Smartphone className="w-4 h-4 shrink-0" />
+          {!collapsed && <span>Mobile view</span>}
         </button>
 
         <button onClick={doLogout} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
