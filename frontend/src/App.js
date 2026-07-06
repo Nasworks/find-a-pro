@@ -43,6 +43,17 @@ import WarrantyClaims from './pages/provider/WarrantyClaims';
 
 import PropertyDashboard from './pages/property/PropertyDashboard';
 import InsuranceDashboard from './pages/insurance/InsuranceDashboard';
+import LandlordDashboard from './pages/landlord/LandlordDashboard';
+import FacilitiesDashboard from './pages/facilities/FacilitiesDashboard';
+import Verification from './pages/provider/Verification';
+import ProfileContact from './pages/provider/ProfileContact';
+import CostEstimator from './pages/shared/CostEstimator';
+import GuideHelp from './pages/shared/GuideHelp';
+import CommunityForum from './pages/shared/CommunityForum';
+import LegalPrivacy from './pages/shared/LegalPrivacy';
+import ReportProvider from './pages/shared/ReportProvider';
+import MyDisputes from './pages/shared/MyDisputes';
+import MoreMenu from './pages/shared/MoreMenu';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -57,6 +68,8 @@ function RootRoute() {
   if (user) {
     if (user.role === 'provider') return <Navigate to="/provider/dashboard" replace />;
     if (user.role === 'property') return <Navigate to="/property/dashboard" replace />;
+    if (user.role === 'landlord') return <Navigate to="/landlord/dashboard" replace />;
+    if (user.role === 'facilities') return <Navigate to="/facilities/dashboard" replace />;
     if (user.role === 'insurance') return <Navigate to="/insurance/dashboard" replace />;
     return <Navigate to="/client-home" replace />;
   }
@@ -109,8 +122,27 @@ function AppRouter() {
         {/* Property */}
         <Route path="/property/dashboard" element={<PropertyDashboard />} />
 
+        {/* Landlord */}
+        <Route path="/landlord/dashboard" element={<LandlordDashboard />} />
+
+        {/* Facilities */}
+        <Route path="/facilities/dashboard" element={<FacilitiesDashboard />} />
+
         {/* Insurance */}
         <Route path="/insurance/dashboard" element={<InsuranceDashboard />} />
+
+        {/* Provider extras */}
+        <Route path="/provider/verification" element={<Verification />} />
+        <Route path="/provider/profile-contact" element={<ProfileContact />} />
+
+        {/* Shared / all roles */}
+        <Route path="/more" element={<MoreMenu />} />
+        <Route path="/cost-estimator" element={<CostEstimator />} />
+        <Route path="/guide-help" element={<GuideHelp />} />
+        <Route path="/community-forum" element={<CommunityForum />} />
+        <Route path="/legal-privacy" element={<LegalPrivacy />} />
+        <Route path="/report-provider" element={<ReportProvider />} />
+        <Route path="/my-disputes" element={<MyDisputes />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
