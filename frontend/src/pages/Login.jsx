@@ -22,7 +22,12 @@ export default function Login() {
     try {
       const u = await login(email, password);
       toast.success(`Welcome back, ${u.name}!`);
-      const target = u.role === 'provider' ? '/provider/dashboard' : u.role === 'property' ? '/property/dashboard' : u.role === 'insurance' ? '/insurance/dashboard' : '/client-home';
+      const target = u.role === 'provider' ? '/provider/dashboard'
+        : u.role === 'property' ? '/property/dashboard'
+        : u.role === 'landlord' ? '/landlord/dashboard'
+        : u.role === 'facilities' ? '/facilities/dashboard'
+        : u.role === 'insurance' ? '/insurance/dashboard'
+        : '/client-home';
       navigate(target);
     } catch (err) {
       toast.error(extractError(err, 'Login failed'));

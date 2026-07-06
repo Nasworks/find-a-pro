@@ -25,7 +25,12 @@ export default function Signup() {
     try {
       const u = await register(form);
       toast.success(`Welcome to Dispatchr, ${u.name}!`);
-      const target = u.role === 'provider' ? '/provider/dashboard' : u.role === 'property' ? '/property/dashboard' : u.role === 'insurance' ? '/insurance/dashboard' : '/client-home';
+      const target = u.role === 'provider' ? '/provider/dashboard'
+        : u.role === 'property' ? '/property/dashboard'
+        : u.role === 'landlord' ? '/landlord/dashboard'
+        : u.role === 'facilities' ? '/facilities/dashboard'
+        : u.role === 'insurance' ? '/insurance/dashboard'
+        : '/client-home';
       navigate(target);
     } catch (err) {
       toast.error(extractError(err, 'Signup failed'));
@@ -77,6 +82,8 @@ export default function Signup() {
                   <SelectItem value="customer">Customer</SelectItem>
                   <SelectItem value="provider">Service Provider</SelectItem>
                   <SelectItem value="property">Property Manager</SelectItem>
+                  <SelectItem value="landlord">Landlord</SelectItem>
+                  <SelectItem value="facilities">Facilities Management</SelectItem>
                   <SelectItem value="insurance">Insurance Partner</SelectItem>
                 </SelectContent>
               </Select>

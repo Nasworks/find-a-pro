@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only verification of Landlord & Facilities Management roles + 'More' menu + 6 shared placeholder pages. All 12 requested flows PASS. Signup for landlord/facilities routes correctly to their dashboards which render the specified badge/stat cards/mock sites. Sidebar contains 'sidebar-nav-more' for every role tested (customer, landlord, facilities). Switch-account dialog exposes all 6 role buttons and correctly navigates to /landlord/dashboard and /facilities/dashboard. Cost Estimator loads from GET /api/cost-guide with 10 category options in filter dropdown. Community Forum, Legal & Privacy (6 PDF download buttons), Guide & Help (channels + FAQs), Report Provider (form with 4 fields), My Disputes (empty state) all render correctly. Existing customer signup regression also passes.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Sidebar > Switch Account Type Dialog", "issue": "After clicking a role button (e.g. switch-role-facilities), navigation occurs but the dialog is not closed programmatically. The DialogOverlay lingers on the new page and intercepts pointer events until the user manually dismisses (Escape / close X). Automated first click on sidebar-nav-more right after switch was blocked by overlay for 30s.", "selector": "[data-testid^=switch-role-]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "In Sidebar.jsx handleSwitchRole, close the Dialog before/after navigate (e.g. control open state via useState and set to false, or wrap DialogTrigger with a controlled Dialog). This prevents the overlay from blocking clicks after switching roles."
+  ],
+  "critical_code_review_comments": [
+    "Sidebar.jsx line ~133: handleSwitchRole does not close the switch-role Dialog after navigation, leaving the overlay in the DOM and blocking interactions until manual dismissal.",
+    "Signup.jsx uses localStorage('dispatchr_selected_role') to preselect role - fine, but not cleared after signup so a returning user may see stale preselection.",
+    "MoreMenu still exposes Notifications/Settings tiles that route to non-existent pages (per problem statement, these are acknowledged placeholders)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% of 12 requested flows"},
+  "test_credentials": "Created on the fly: test-ll-{ts}@dispatchr.test / password123 (landlord), test-cust-{ts}@dispatchr.test (customer). Cookie-based httpOnly auth confirmed working via withCredentials.",
+  "seed_data_creation": "None persisted beyond test users created during signup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All requested flows verified passing on preview URL. Only follow-up needed is the minor 'switch role dialog does not auto-close' UX polish. Notifications/Settings 404 is expected and out of scope."
+}

@@ -38,7 +38,7 @@ api = APIRouter(prefix="/api")
 class UserBase(BaseModel):
     email: str
     name: str
-    role: str = "customer"  # customer, provider, property, insurance
+    role: str = "customer"  # customer, provider, property, insurance, landlord, facilities
     phone: Optional[str] = None
     picture: Optional[str] = None
     city: Optional[str] = "Auckland"
@@ -516,7 +516,7 @@ async def logout(response: Response, session_token: Optional[str] = Cookie(defau
 async def switch_role(request: Request, user=Depends(require_user)):
     body = await request.json()
     role = body.get("role")
-    if role not in ["customer", "provider", "property", "insurance"]:
+    if role not in ["customer", "provider", "property", "insurance", "landlord", "facilities"]:
         raise HTTPException(status_code=400, detail="Invalid role")
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": role}})
     if role == "provider":

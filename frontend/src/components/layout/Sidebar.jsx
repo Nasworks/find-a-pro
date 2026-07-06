@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, LogOut, ChevronLeft, ChevronRight, Sun, Moon, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, Shield, FileText, Wrench, Repeat, HardHat, Radio, History, Share2, Crown, ShieldCheck, LinkIcon, Locate } from 'lucide-react';
+import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, LogOut, ChevronLeft, ChevronRight, Sun, Moon, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, Shield, FileText, Wrench, Repeat, HardHat, Radio, History, Share2, Crown, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useCart } from '../../context/CartContext';
@@ -25,6 +25,7 @@ const clientNav = [
   ]},
   { section: 'Actions', items: [
     { to: '/post-job', label: 'Post a Job', icon: Plus, highlight: true },
+    { to: '/more', label: 'More', icon: MoreHorizontal },
   ]},
 ];
 
@@ -52,6 +53,7 @@ const providerNav = [
     { to: '/provider/membership', label: 'Membership', icon: Crown },
     { to: '/provider/warranty-claims', label: 'Warranty Claims', icon: ShieldCheck },
     { to: '/profile', label: 'Profile', icon: User },
+    { to: '/more', label: 'More', icon: MoreHorizontal },
   ]},
 ];
 
@@ -66,6 +68,39 @@ const propertyNav = [
     { to: '/post-job', label: 'Post a Job', icon: Plus, highlight: true },
     { to: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
     { to: '/profile', label: 'Profile', icon: User },
+    { to: '/more', label: 'More', icon: MoreHorizontal },
+  ]},
+];
+
+const landlordNav = [
+  { section: 'Rentals', items: [
+    { to: '/landlord/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/property/dashboard', label: 'My Rentals', icon: HomeIcon2 },
+    { to: '/my-job-posts', label: 'Maintenance', icon: Wrench },
+    { to: '/bookings', label: 'Bookings', icon: CalendarCheck },
+    { to: '/messages', label: 'Messages', icon: MessageSquare },
+  ]},
+  { section: 'Actions', items: [
+    { to: '/post-job', label: 'Request Maintenance', icon: Plus, highlight: true },
+    { to: '/cost-estimator', label: 'Cost Estimator', icon: DollarSign },
+    { to: '/profile', label: 'Profile', icon: User },
+    { to: '/more', label: 'More', icon: MoreHorizontal },
+  ]},
+];
+
+const facilitiesNav = [
+  { section: 'Portal', items: [
+    { to: '/facilities/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/property/dashboard', label: 'Sites', icon: Building2 },
+    { to: '/my-job-posts', label: 'SLA Tickets', icon: ClipboardList },
+    { to: '/bookings', label: 'Bookings', icon: CalendarCheck },
+    { to: '/messages', label: 'Messages', icon: MessageSquare },
+  ]},
+  { section: 'Actions', items: [
+    { to: '/post-job', label: 'Log Ticket', icon: Plus, highlight: true },
+    { to: '/cost-estimator', label: 'Cost Estimator', icon: DollarSign },
+    { to: '/profile', label: 'Profile', icon: User },
+    { to: '/more', label: 'More', icon: MoreHorizontal },
   ]},
 ];
 
@@ -74,15 +109,18 @@ const insuranceNav = [
     { to: '/insurance/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/messages', label: 'Messages', icon: MessageSquare },
     { to: '/profile', label: 'Profile', icon: User },
+    { to: '/more', label: 'More', icon: MoreHorizontal },
   ]},
 ];
 
-const roleNav = { customer: clientNav, provider: providerNav, property: propertyNav, insurance: insuranceNav };
+const roleNav = { customer: clientNav, provider: providerNav, property: propertyNav, insurance: insuranceNav, landlord: landlordNav, facilities: facilitiesNav };
 
 const roles = [
   { id: 'customer', label: 'Customer', icon: UserIcon, color: 'bg-blue-500' },
   { id: 'provider', label: 'Service Provider', icon: WrenchIcon, color: 'bg-emerald-500' },
   { id: 'property', label: 'Property Manager', icon: B2, color: 'bg-violet-500' },
+  { id: 'landlord', label: 'Landlord', icon: KeyRound, color: 'bg-orange-500' },
+  { id: 'facilities', label: 'Facilities Management', icon: Building2, color: 'bg-slate-600' },
   { id: 'insurance', label: 'Insurance', icon: ShieldIcon, color: 'bg-teal-500' },
 ];
 
@@ -97,7 +135,12 @@ export default function Sidebar({ collapsed, setCollapsed }) {
     try {
       await switchRole(roleId);
       toast.success(`Switched to ${roleId}`);
-      const target = roleId === 'provider' ? '/provider/dashboard' : roleId === 'property' ? '/property/dashboard' : roleId === 'insurance' ? '/insurance/dashboard' : '/client-home';
+      const target = roleId === 'provider' ? '/provider/dashboard'
+        : roleId === 'property' ? '/property/dashboard'
+        : roleId === 'landlord' ? '/landlord/dashboard'
+        : roleId === 'facilities' ? '/facilities/dashboard'
+        : roleId === 'insurance' ? '/insurance/dashboard'
+        : '/client-home';
       navigate(target);
     } catch { toast.error('Failed to switch role'); }
   };
@@ -128,7 +171,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
             {!collapsed && <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{sec.section}</div>}
             <div className="space-y-0.5">
               {sec.items.map((it) => (
-                <NavLink key={it.to} to={it.to} className={({ isActive }) => `group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${it.highlight ? 'bg-primary text-primary-foreground hover:bg-primary/90 justify-center shadow-sm shadow-primary/20' : isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}>
+                <NavLink key={it.to} to={it.to} data-testid={`sidebar-nav-${it.label.toLowerCase().replace(/\s+&\s+/g, '-').replace(/\s+/g, '-')}`} className={({ isActive }) => `group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${it.highlight ? 'bg-primary text-primary-foreground hover:bg-primary/90 justify-center shadow-sm shadow-primary/20' : isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`}>
                   <it.icon className="w-4 h-4 shrink-0" />
                   {!collapsed && <span className="truncate">{it.label}</span>}
                 </NavLink>
@@ -153,7 +196,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                 const Icon = r.icon;
                 const active = r.id === user?.role;
                 return (
-                  <button key={r.id} onClick={() => handleSwitchRole(r.id)} className={`w-full flex items-center gap-3 p-3 rounded-xl border ${active ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'} transition-colors text-left`}>
+                  <button key={r.id} data-testid={`switch-role-${r.id}`} onClick={() => handleSwitchRole(r.id)} className={`w-full flex items-center gap-3 p-3 rounded-xl border ${active ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'} transition-colors text-left`}>
                     <div className={`w-10 h-10 rounded-lg ${r.color} flex items-center justify-center text-white`}><Icon className="w-5 h-5" /></div>
                     <div className="flex-1">
                       <div className="font-medium text-foreground">{r.label}</div>

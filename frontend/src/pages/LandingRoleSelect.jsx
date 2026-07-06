@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Wrench, Building2, Shield, ArrowRight, ChevronDown } from 'lucide-react';
+import { User, Wrench, Building2, Shield, KeyRound, Landmark, ArrowRight, ChevronDown } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useTheme } from '../context/ThemeContext';
 import Logo from '../components/Logo';
@@ -9,6 +9,8 @@ const roles = [
   { id: 'customer', title: 'Customer', desc: 'I need a service for my home or business', icon: User, color: 'from-blue-500 to-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/40', iconBg: 'bg-blue-500' },
   { id: 'provider', title: 'Service Provider', desc: 'I offer trade services to clients', icon: Wrench, color: 'from-emerald-500 to-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/40', iconBg: 'bg-emerald-500' },
   { id: 'property', title: 'Property Manager', desc: 'Manage multiple properties and maintenance', icon: Building2, color: 'from-violet-500 to-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/40', iconBg: 'bg-violet-500' },
+  { id: 'landlord', title: 'Landlord', desc: 'Maintain rental properties and track spend', icon: KeyRound, color: 'from-orange-500 to-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/40', iconBg: 'bg-orange-500' },
+  { id: 'facilities', title: 'Facilities Management', desc: 'Commercial sites, SLAs and preventive maintenance', icon: Landmark, color: 'from-slate-600 to-slate-700', bg: 'bg-slate-50 dark:bg-slate-950/40', iconBg: 'bg-slate-600' },
   { id: 'insurance', title: 'Insurance Partner', desc: 'Access shared property histories & docs', icon: Shield, color: 'from-teal-500 to-teal-600', bg: 'bg-teal-50 dark:bg-teal-950/40', iconBg: 'bg-teal-500' },
 ];
 
@@ -57,6 +59,7 @@ export default function LandingRoleSelect() {
             return (
               <button
                 key={r.id}
+                data-testid={`role-select-${r.id}`}
                 onClick={() => handleRole(r.id)}
                 className="w-full group flex items-center gap-4 p-4 rounded-2xl border border-border bg-card hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 transition-all text-left"
               >
