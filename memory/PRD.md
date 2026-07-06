@@ -22,7 +22,12 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
 ## What's Implemented (2026-02-06)
-- ✅ **Desktop / Mobile View Mode Toggle (2026-02-06)**:
+- ✅ **Sidebar refactor (2026-02-06)**: Extracted into 4 files — `Sidebar.jsx` (~90 lines, was 240), `SidebarNavSection.jsx`, `SidebarFooter.jsx`, `SwitchRoleDialog.jsx`. All data-testids preserved, zero behavioral regressions verified by testing agent.
+- ✅ **Forum unique-viewer tracking (2026-02-06)**: `viewers` set via `$addToSet`, views only increment on first visit by a user, author never counts as a viewer, `viewers` array stripped from response.
+- ✅ **Forum nested replies (2026-02-06)**: `parent_reply_id` supported on `POST /api/forum/posts/{id}/replies`, frontend `flattenTree` + `ReplyItem` renders replies indented (`marginLeft: depth*16px`), per-reply "Reply" button opens threaded composer with `@Author` pre-mention and scrolls into view, Cancel-thread button resets composer.
+- ✅ **Lint cleanup (2026-02-06)**: Escaped apostrophes/quotes in LandingRoleSelect, PostJob, Referrals, WarrantyClaims, JobDetail, ServicePicker.
+- ✅ **A11y (2026-02-06)**: `DialogDescription` added to SwitchRoleDialog (Radix warning resolved).
+- ✅ **Desktop / Mobile View Mode Toggle**:
   - `ViewModeContext` — persisted `dispatchr_view_mode` in localStorage, lazy-initialized, auto-detects mobile if browser width < 768px on first visit
   - `ViewModeToggle` button in TopBar (desktop), MobileTopBar, Landing header, and Sidebar footer (data-testid `view-mode-toggle`, `sidebar-view-mode-toggle`)
   - Desktop mode: unchanged (Sidebar + TopBar + full-width main)

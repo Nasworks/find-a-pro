@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Repeat } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '../ui/dialog';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
 
@@ -44,7 +44,10 @@ export default function SwitchRoleDialog({ collapsed, roles }) {
         </button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>Switch account type</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Switch account type</DialogTitle>
+          <DialogDescription className="sr-only">Pick a different account role to switch your active dashboard.</DialogDescription>
+        </DialogHeader>
         <div className="space-y-2 mt-4">
           {roles.map((r) => {
             const Icon = r.icon;
