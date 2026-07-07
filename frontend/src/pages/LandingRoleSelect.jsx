@@ -44,8 +44,8 @@ export default function LandingRoleSelect() {
           <span className="w-1.5 h-1.5 rounded-full bg-primary pulse-dot" />
           Trusted by 12,000+ homes across NZ
         </div>
-        <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-foreground">
-          Your home,
+        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.05]">
+          Your home, business, or property,
           <span className="block bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
             managed intelligently.
           </span>
