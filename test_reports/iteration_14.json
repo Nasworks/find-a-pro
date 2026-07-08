@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 14 full-app investor-grade regression: 6-role demo-login + entire sidebar link matrix (77 routes across 6 roles) + backend endpoint contract + rebrand check. Backend pytest: 35/35 pass. Frontend Playwright: 76/77 routes render cleanly. ONE real bug found: Provider /profile page crashes with React error 'Objects are not valid as a React child (found: object with keys {l, v})' due to a JSX ternary-precedence bug in /app/frontend/src/pages/client/Profile.jsx (lines 62-79). Rebrand is clean: <title> = 'Pro Finder NZ — Trusted Home Services Marketplace', zero 'dispatchr' text visible in body. 404 fallback ('/does-not-exist' -> user's dashboard via '/') works. No 500 responses anywhere. Only 401s on /api/auth/me pre-login (expected).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Profile (shared /profile page rendered for Provider role)",
+        "issue": "React render crash: 'Objects are not valid as a React child (found: object with keys {l, v})'. Root cause: JSX ternary precedence bug at lines 62-79 of /app/frontend/src/pages/client/Profile.jsx — the `.map(...)` only binds to the else-branch array, so when isProvider===true, React attempts to render the raw array of `{l,v}` objects. Fix: wrap the ternary in parentheses so both arrays are mapped, e.g. `{(isProvider ? [...] : [...]).map((s) => (...))}`.",
+        "selector": "/profile (Provider role) — page area under gradient header",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_demo_login_and_routes.py",
+    "/app/test_reports/pytest/iter14_demo_login.xml"
+  ],
+  "action_items": [
+    "FIX /app/frontend/src/pages/client/Profile.jsx lines 62-79: wrap the ternary result before .map(). Suggested: `{(isProvider ? [{l:'Earnings',v:...},{...}] : [{l:'Upcoming',v:...},{...}]).map((s) => (...))}`. This will restore the Provider profile hero stat tiles and eliminate the React child crash. All 5 other roles' /profile render fine — this only impacts Provider."
+  ],
+  "critical_code_review_comments": [
+    "server.py POST /api/jobs validates category/subcategory using slug-based index keys, but the public GET /api/services/taxonomy/{service_type} returns human-readable names. The frontend picker must be sending slugs (works in tests), but this dual naming is a maintenance risk — consider accepting either name or slug and normalising server-side.",
+    "There is no /api/services/taxonomy (bare) endpoint — only /api/services/taxonomy/{service_type}. Anyone hitting the bare path gets 404. Consider adding a bare-path alias returning both residential+commercial for convenience.",
+    "Profile.jsx uses the SAME component for customer and provider — the provider profile is functionally a stripped-down customer profile. Consider a dedicated ProviderProfile page (or role-aware fields) so provider-specific data like verification, portfolio, rating, service radius can be surfaced.",
+    "RootRoute + catch-all `<Route path='*' element={<Navigate to='/' replace />} />` means fake routes silently redirect for authed users; consider a proper 404 page for a more polished investor demo."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_demo_login_and_routes.py"
+  ],
+  "success_rate": {"backend": "100% (35/35 pytest)", "frontend": "98.7% (76/77 routes across 6 roles)"},
+  "test_credentials": "demo-{role}@profinder.nz / Demo123! (roles: customer, provider, property, landlord, facilities, insurance). Also usable via one-click demo-login-{role} button on /login.",
+  "seed_data_creation": "One TEST_ job (Plumbing/Leak Repair) posted by demo-customer during pytest run; one TEST_ forum reply posted on top forum post. Both idempotent and prefixed for easy cleanup.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "After fix, retest only Provider /profile — the JSX ternary precedence issue on lines 62-79 of Profile.jsx. Everything else (all 76 other routes, all 6 demo-logins, forum reply, post-job, saved-providers, tenancies, approvals, rebrand, 404 fallback) is verified green. Backend regression file to reuse: /app/backend/tests/test_demo_login_and_routes.py (35 tests, 6-role smoke).",
+  "rca of the issue": "Provider /profile crash — RCA: In /app/frontend/src/pages/client/Profile.jsx the stat-tile block is written as `{isProvider ? [{l,v},...] : [{l,v},...].map(s => <div/>)}`. JavaScript operator precedence binds `.map` to the else-side array only. When isProvider===true, React receives the true-branch array of plain objects and throws 'Objects are not valid as a React child (found: object with keys {l, v})'. Reproduction: log in as demo-provider@profinder.nz -> navigate to /profile -> full-page blank + red pageerror in console. Mitigation: `{(isProvider ? A : B).map(...)}` — wrap the ternary in parens so `.map` applies to whichever branch is chosen."
+}
