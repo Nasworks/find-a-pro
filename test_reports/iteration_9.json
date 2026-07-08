@@ -1,0 +1,31 @@
+{
+  "summary": "Full e2e test of Tenant→Manager approval workflow (2026-02-07 feature). Backend: 17/17 pytest cases pass covering tenancy lifecycle, duplicate protection, job routing, approval queue, approve/reject flows, preferred-providers, RBAC and direct-post fallback. Frontend: /tenancies (customer + landlord), /approvals (landlord queue with approve+reject dialogs), PostJob banner (with & without active tenancy), and sidebar navigation links all verified via Playwright.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ApprovalQueue approve dialog", "issues": ["'Also allow other providers to bid' checkbox (data-testid open-to-bids-checkbox) is only rendered when a specific provider is chosen via assign-provider-select. Reasonable UX (checkbox only meaningful when a provider is selected), but review spec implied it always visible. Flag if intended to be always visible."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_tenancy_approvals.py",
+    "/app/test_reports/pytest/tenancy_approvals.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: If spec requires the open-to-bids-checkbox to always be present in the Approve dialog (even when no specific provider is chosen), unconditionally render it. Currently it's hidden until a provider is selected in assign-provider-select."
+  ],
+  "critical_code_review_comments": [
+    "server.py is ~2505 lines — split into routers (auth, jobs, tenancies, approvals, bids, feed, marketplace, provider, etc.) for maintainability.",
+    "Tenancy approval queue relies on approver_id being set when the tenancy was requested (approver had already registered). Flow correctly re-sets approver_id on approve_tenancy, but pending jobs posted BEFORE the approver registers would have approver_id=None. In current /api/jobs code, if tenancy.approver_id is None, the job gets approver_id=None too, and /approvals/queue filters by approver_id=user['user_id'] — so those jobs are unreachable. Consider backfilling job.approver_id when tenancy is approved, or matching approvals/queue by approver_email too.",
+    "_preferred_providers_for_approver queries bids by status in ['accepted','completed'] but code never sets 'completed' status on bids — only 'accepted'. Not a bug (accepted covers it) but harmless dead-code branch."
+  ],
+  "updated_files": ["/app/backend/tests/test_tenancy_approvals.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Registered fresh users via /api/auth/register (password: testpass123). Emails pattern: qa-<role>-<uuid>@dispatchr.demo.",
+  "seed_data_creation": "None — tests self-register users and clean up implicitly via unique emails per run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test file at /app/backend/tests/test_tenancy_approvals.py covers the full tenancy+approval workflow (17 tests, all passing). Frontend flows verified through Playwright — tenancies page (tenant + landlord), approval queue (approve/reject dialogs with data-testids submit-approve, submit-reject, reject-reason-input min 3 chars validation), PostJob banner (tenancy-routing-banner with route-via-manager-on/off toggles, link-manager-hint for no tenancy), sidebar links (sidebar-nav-approval-queue, sidebar-nav-my-property-link). One design note: open-to-bids-checkbox only shows when a specific provider is picked in the approve dialog.",
+  "rca of the issue": "N/A — no bugs found."
+}

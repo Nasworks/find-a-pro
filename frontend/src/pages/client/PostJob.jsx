@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
-import { ArrowLeft, MapPin, Loader2, Home as HomeIcon, Building2, ChevronRight, Sparkles, Layers } from 'lucide-react';
+import { ArrowLeft, MapPin, Loader2, Home as HomeIcon, Building2, ChevronRight, Sparkles, Layers, KeyRound, ShieldCheck } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
@@ -23,6 +23,16 @@ export default function PostJob() {
   const preset = location.state || {};
   const [saving, setSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [activeTenancies, setActiveTenancies] = useState([]);
+  const [routeViaManager, setRouteViaManager] = useState(true);
+
+  useEffect(() => {
+    // Only tenants (customer role) should see the "route via manager" option
+    if (user?.role !== 'customer') return;
+    api.get('/tenancies/mine')
+      .then((r) => setActiveTenancies((r.data || []).filter((t) => t.status === 'active')))
+      .catch(() => setActiveTenancies([]));
+  }, [user?.role]);
 
   const initialServiceType = preset.propertyType
     || preset.service_type
@@ -82,6 +92,7 @@ export default function PostJob() {
     }
     setSaving(true);
     try {
+      const shouldRoute = activeTenancies.length > 0 && routeViaManager;
       const payload = {
         title: form.title,
         description: form.description,
@@ -94,9 +105,13 @@ export default function PostJob() {
         urgency: form.urgency,
         mode: form.mode,
         photos: form.photos,
+        route_via_manager: shouldRoute,
+        tenancy_id: shouldRoute ? activeTenancies[0].tenancy_id : null,
       };
       const res = await api.post('/jobs', payload);
-      toast.success('Job posted — pros will be notified');
+      toast.success(shouldRoute
+        ? 'Request sent to your manager for approval'
+        : 'Job posted — pros will be notified');
       navigate(`/jobs/${res.data.job_id}`);
     } catch {
       toast.error('Failed to post job');
@@ -117,6 +132,48 @@ export default function PostJob() {
       <p className="text-muted-foreground mt-1">Tell us the details — we&apos;ll match you with the right pros.</p>
 
       <form onSubmit={submit} className="mt-6 space-y-5 bg-card border border-border rounded-2xl p-6">
+        {/* Tenancy routing banner */}
+        {user?.role === 'customer' && activeTenancies.length > 0 && (
+          <div className="p-4 rounded-xl border border-primary/30 bg-primary/5" data-testid="tenancy-routing-banner">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                <KeyRound className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-foreground">
+                  Send this to your manager for approval?
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  Linked with <span className="text-foreground font-medium">{activeTenancies[0].approver?.name || activeTenancies[0].approver_email}</span>{activeTenancies[0].label ? ` · ${activeTenancies[0].label}` : ''}. Quotes &amp; invoices will bill to them.
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid="route-via-manager-on"
+                    onClick={() => setRouteViaManager(true)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${routeViaManager ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-border hover:border-primary/50'}`}
+                  >
+                    <ShieldCheck className="w-3 h-3" /> Send to manager
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="route-via-manager-off"
+                    onClick={() => setRouteViaManager(false)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${!routeViaManager ? 'bg-foreground text-background border-foreground' : 'text-muted-foreground border-border hover:border-primary/50'}`}
+                  >
+                    Book on my own
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {user?.role === 'customer' && activeTenancies.length === 0 && (
+          <div className="p-3 rounded-xl border border-dashed border-border text-xs text-muted-foreground flex items-center gap-2" data-testid="link-manager-hint">
+            <KeyRound className="w-3.5 h-3.5 shrink-0" />
+            <span className="flex-1">Renting? <Link to="/tenancies" className="text-primary font-medium hover:underline">Link your landlord/manager</Link> to route maintenance requests for approval.</span>
+          </div>
+        )}
         {/* Service type toggle */}
         <div>
           <Label>Property type</Label>

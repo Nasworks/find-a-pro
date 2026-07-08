@@ -69,10 +69,19 @@ class JobPost(BaseModel):
     location: str = "Auckland"
     budget_min: Optional[float] = None
     budget_max: Optional[float] = None
-    urgency: str = "flexible"  # asap, this_week, within_month, flexible
-    mode: str = "quotes"  # quotes, instant
+    urgency: str = "flexible"
+    mode: str = "quotes"
     status: str = "open"  # open, in_progress, done, cancelled
     photos: List[str] = []
+    # ---- Tenant → Manager approval workflow (2026-02-07) ----
+    tenancy_id: Optional[str] = None            # set when tenant posts on behalf of a linked tenancy
+    tenant_id: Optional[str] = None             # duplicate of client_id, but explicit
+    approver_id: Optional[str] = None           # landlord/property/facilities user_id when required
+    approval_status: str = "not_required"       # not_required | pending | approved | rejected
+    approved_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    assigned_provider_id: Optional[str] = None  # manager can pre-assign a preferred provider
+    billing_target: str = "client"              # client | approver  — who receives quotes/invoices
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -88,6 +97,33 @@ class JobCreate(BaseModel):
     urgency: str = "flexible"
     mode: str = "quotes"
     photos: List[str] = []
+    # Tenant flow: opt-in to route through the manager
+    tenancy_id: Optional[str] = None
+    route_via_manager: bool = False  # if True and user has active tenancy, will require manager approval
+
+
+class Tenancy(BaseModel):
+    tenancy_id: str = Field(default_factory=lambda: f"ten_{uuid.uuid4().hex[:10]}")
+    tenant_id: str
+    approver_id: Optional[str] = None       # set when the manager approves — until then, only approver_email is known
+    approver_email: str
+    approver_role: str = "landlord"          # landlord | property | facilities
+    label: Optional[str] = None              # e.g. "12 Grey Lynn Ave — Room 2"
+    status: str = "pending"                  # pending | active | rejected | archived
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    approved_at: Optional[datetime] = None
+
+
+class TenancyRequestCreate(BaseModel):
+    approver_email: EmailStr
+    approver_role: str = "landlord"           # landlord | property | facilities
+    label: Optional[str] = None
+
+
+class JobApprovalAction(BaseModel):
+    assigned_provider_id: Optional[str] = None  # when approving, optionally pre-assign a specific provider
+    open_to_bids: bool = True                   # if False and assigned_provider_id set, only that provider sees it
+    reason: Optional[str] = None                # required for reject
 
 
 class Bid(BaseModel):
@@ -561,23 +597,56 @@ async def create_job(payload: JobCreate, user=Depends(require_user)):
         if key not in idx:
             raise HTTPException(status_code=400, detail=f"Unknown subcategory '{payload.subcategory}' for {payload.service_type} category '{payload.category}'")
     elif payload.category in known_cats:
-        # category-only — allowed but no subcategory
         pass
-    # else: legacy short category id (e.g. 'plumbing') — allow silently
-    job = JobPost(client_id=user["user_id"], **payload.dict())
+    # ---- Tenancy / approval routing ----
+    approver_id: Optional[str] = None
+    tenancy_id: Optional[str] = payload.tenancy_id
+    approval_status = "not_required"
+    billing_target = "client"
+    if payload.route_via_manager or payload.tenancy_id:
+        # Find an active tenancy for this tenant. If tenancy_id given, use that;
+        # otherwise auto-pick the first active tenancy.
+        query: Dict[str, Any] = {"tenant_id": user["user_id"], "status": "active"}
+        if payload.tenancy_id:
+            query["tenancy_id"] = payload.tenancy_id
+        tenancy = await db.tenancies.find_one(query)
+        if not tenancy:
+            raise HTTPException(status_code=400, detail="No active tenancy found for approval routing")
+        approver_id = tenancy.get("approver_id")
+        tenancy_id = tenancy["tenancy_id"]
+        approval_status = "pending"
+        billing_target = "approver"
+    job_data = payload.dict(exclude={"route_via_manager", "tenancy_id"})
+    job = JobPost(
+        client_id=user["user_id"],
+        tenant_id=user["user_id"] if approval_status == "pending" else None,
+        tenancy_id=tenancy_id,
+        approver_id=approver_id,
+        approval_status=approval_status,
+        billing_target=billing_target,
+        **job_data,
+    )
     await db.jobs.insert_one(job.dict())
     return job
 
 
 @api.get("/jobs/mine")
 async def my_jobs(user=Depends(require_user)):
-    jobs = await db.jobs.find({"client_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    """
+    Returns jobs the user is involved with:
+    - own posted jobs (as client)
+    - jobs where they are the approver (landlord/property/facilities)
+    """
+    query: Dict[str, Any] = {"$or": [{"client_id": user["user_id"]}]}
+    if user["role"] in APPROVER_ROLES:
+        query["$or"].append({"approver_id": user["user_id"]})
+    jobs = await db.jobs.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
     if not jobs:
         return jobs
     # Batch fetch all bids for these jobs (avoids N+1)
     job_ids = [j["job_id"] for j in jobs]
     all_bids = await db.bids.find({"job_id": {"$in": job_ids}}, {"_id": 0}).to_list(None)
-    bids_by_job = {}
+    bids_by_job: Dict[str, List[Dict[str, Any]]] = {}
     for b in all_bids:
         bids_by_job.setdefault(b["job_id"], []).append(b)
     for j in jobs:
@@ -591,7 +660,11 @@ async def my_jobs(user=Depends(require_user)):
 
 @api.get("/jobs/board")
 async def job_board(category: Optional[str] = None, user=Depends(require_user)):
-    q: Dict[str, Any] = {"status": "open"}
+    """Providers only see approved (or not_required) open jobs."""
+    q: Dict[str, Any] = {
+        "status": "open",
+        "approval_status": {"$in": ["not_required", "approved"]},
+    }
     if category:
         q["category"] = category
     jobs = await db.jobs.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
@@ -1347,6 +1420,200 @@ async def job_history(user=Depends(require_user)):
     q = {"$or": [{"client_id": user["user_id"]}, {"provider_id": user["user_id"]}], "status": {"$in": ["done", "paid", "cancelled"]}}
     bookings = await db.bookings.find(q, {"_id": 0}).sort("scheduled_at", -1).to_list(500)
     return bookings
+
+
+# ---------------- TENANCY & APPROVAL WORKFLOW ----------------
+APPROVER_ROLES = {"landlord", "property", "facilities"}
+
+
+def _serialize_tenancy(t: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in t.items() if k != "_id"}
+
+
+@api.post("/tenancies")
+async def create_tenancy_request(payload: TenancyRequestCreate, user=Depends(require_user)):
+    """A tenant/customer requests to link with a landlord/property manager by email."""
+    if payload.approver_role not in APPROVER_ROLES:
+        raise HTTPException(status_code=400, detail=f"approver_role must be one of {sorted(APPROVER_ROLES)}")
+    approver_email = payload.approver_email.lower()
+    # If an approver with this email already exists, pre-link the approver_id
+    approver = await db.users.find_one({"email": approver_email})
+    approver_id = approver["user_id"] if approver else None
+    # Prevent duplicate pending/active links for the same (tenant, email)
+    existing = await db.tenancies.find_one({
+        "tenant_id": user["user_id"], "approver_email": approver_email, "status": {"$in": ["pending", "active"]},
+    })
+    if existing:
+        return _serialize_tenancy(existing)
+    tenancy = Tenancy(
+        tenant_id=user["user_id"],
+        approver_id=approver_id,
+        approver_email=approver_email,
+        approver_role=payload.approver_role,
+        label=payload.label,
+    )
+    await db.tenancies.insert_one(tenancy.dict())
+    return tenancy.dict()
+
+
+@api.get("/tenancies/mine")
+async def my_tenancies(user=Depends(require_user)):
+    """
+    - Tenant sees tenancies where they are the tenant.
+    - Approver sees tenancies where their user_id OR email matches.
+    """
+    if user["role"] in APPROVER_ROLES:
+        cursor = db.tenancies.find({"$or": [
+            {"approver_id": user["user_id"]},
+            {"approver_email": user["email"].lower()},
+        ]})
+    else:
+        cursor = db.tenancies.find({"tenant_id": user["user_id"]})
+    items = await cursor.sort("created_at", -1).to_list(200)
+    # Enrich with the counterparty name for UI
+    out = []
+    for t in items:
+        tenant = await db.users.find_one({"user_id": t.get("tenant_id")}, {"_id": 0, "user_id": 1, "name": 1, "email": 1})
+        approver = None
+        if t.get("approver_id"):
+            approver = await db.users.find_one({"user_id": t["approver_id"]}, {"_id": 0, "user_id": 1, "name": 1, "email": 1, "role": 1})
+        item = _serialize_tenancy(t)
+        item["tenant"] = tenant
+        item["approver"] = approver
+        out.append(item)
+    return out
+
+
+async def _require_tenancy_approver(tenancy_id: str, user: Dict[str, Any]) -> Dict[str, Any]:
+    t = await db.tenancies.find_one({"tenancy_id": tenancy_id})
+    if not t:
+        raise HTTPException(status_code=404, detail="Tenancy not found")
+    matches = t.get("approver_id") == user["user_id"] or t.get("approver_email") == user["email"].lower()
+    if not matches:
+        raise HTTPException(status_code=403, detail="You are not the approver on this tenancy")
+    if user["role"] not in APPROVER_ROLES:
+        raise HTTPException(status_code=403, detail="Your role cannot approve tenancies")
+    return t
+
+
+@api.post("/tenancies/{tenancy_id}/approve")
+async def approve_tenancy(tenancy_id: str, user=Depends(require_user)):
+    t = await _require_tenancy_approver(tenancy_id, user)
+    if t["status"] == "active":
+        return _serialize_tenancy(t)
+    now = datetime.now(timezone.utc)
+    await db.tenancies.update_one(
+        {"tenancy_id": tenancy_id},
+        {"$set": {"status": "active", "approver_id": user["user_id"], "approved_at": now}},
+    )
+    updated = await db.tenancies.find_one({"tenancy_id": tenancy_id})
+    return _serialize_tenancy(updated)
+
+
+@api.post("/tenancies/{tenancy_id}/reject")
+async def reject_tenancy(tenancy_id: str, user=Depends(require_user)):
+    await _require_tenancy_approver(tenancy_id, user)
+    await db.tenancies.update_one({"tenancy_id": tenancy_id}, {"$set": {"status": "rejected"}})
+    return {"ok": True}
+
+
+@api.delete("/tenancies/{tenancy_id}")
+async def archive_tenancy(tenancy_id: str, user=Depends(require_user)):
+    t = await db.tenancies.find_one({"tenancy_id": tenancy_id})
+    if not t:
+        raise HTTPException(status_code=404, detail="Not found")
+    is_tenant = t.get("tenant_id") == user["user_id"]
+    is_approver = t.get("approver_id") == user["user_id"] or t.get("approver_email") == user["email"].lower()
+    if not (is_tenant or is_approver):
+        raise HTTPException(status_code=403, detail="Not your tenancy")
+    await db.tenancies.update_one({"tenancy_id": tenancy_id}, {"$set": {"status": "archived"}})
+    return {"ok": True}
+
+
+async def _preferred_providers_for_approver(approver_id: str) -> List[Dict[str, Any]]:
+    """Distinct providers who have completed / accepted bids on this approver's past jobs."""
+    approver_jobs = await db.jobs.find({"approver_id": approver_id}, {"job_id": 1, "_id": 0}).to_list(500)
+    job_ids = [j["job_id"] for j in approver_jobs]
+    if not job_ids:
+        return []
+    bids = await db.bids.find({"job_id": {"$in": job_ids}, "status": {"$in": ["accepted", "completed"]}}).to_list(500)
+    provider_ids = list({b["provider_id"] for b in bids})
+    if not provider_ids:
+        return []
+    profiles = await db.provider_profiles.find({"user_id": {"$in": provider_ids}}).to_list(500)
+    return [{"user_id": p["user_id"], "business_name": p.get("business_name"), "rating": p.get("rating", 0), "reviews": p.get("reviews", 0)} for p in profiles]
+
+
+@api.get("/approvals/preferred-providers")
+async def preferred_providers(user=Depends(require_user)):
+    if user["role"] not in APPROVER_ROLES:
+        raise HTTPException(status_code=403, detail="Only approvers can view preferred providers")
+    return await _preferred_providers_for_approver(user["user_id"])
+
+
+@api.get("/approvals/queue")
+async def approval_queue(user=Depends(require_user)):
+    """Jobs awaiting this approver's decision."""
+    if user["role"] not in APPROVER_ROLES:
+        raise HTTPException(status_code=403, detail="Only approvers can view approval queue")
+    jobs = await db.jobs.find({
+        "approver_id": user["user_id"],
+        "approval_status": "pending",
+    }).sort("created_at", -1).to_list(200)
+    # Enrich with tenant info
+    out = []
+    for j in jobs:
+        tenant = await db.users.find_one({"user_id": j.get("tenant_id")}, {"_id": 0, "user_id": 1, "name": 1, "email": 1})
+        item = {k: v for k, v in j.items() if k != "_id"}
+        item["tenant"] = tenant
+        out.append(item)
+    return out
+
+
+@api.post("/jobs/{job_id}/approve")
+async def approve_job(job_id: str, payload: JobApprovalAction, user=Depends(require_user)):
+    job = await db.jobs.find_one({"job_id": job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("approver_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not your approval to make")
+    if job.get("approval_status") != "pending":
+        raise HTTPException(status_code=400, detail=f"Job is not pending (status: {job.get('approval_status')})")
+    update: Dict[str, Any] = {
+        "approval_status": "approved",
+        "approved_at": datetime.now(timezone.utc),
+        "billing_target": "approver",
+    }
+    if payload.assigned_provider_id:
+        # Validate provider exists
+        provider = await db.provider_profiles.find_one({"user_id": payload.assigned_provider_id})
+        if not provider:
+            raise HTTPException(status_code=400, detail="Assigned provider not found")
+        update["assigned_provider_id"] = payload.assigned_provider_id
+        if not payload.open_to_bids:
+            update["mode"] = "instant"
+    await db.jobs.update_one({"job_id": job_id}, {"$set": update})
+    updated = await db.jobs.find_one({"job_id": job_id})
+    return {k: v for k, v in updated.items() if k != "_id"}
+
+
+@api.post("/jobs/{job_id}/reject")
+async def reject_job(job_id: str, payload: JobApprovalAction, user=Depends(require_user)):
+    job = await db.jobs.find_one({"job_id": job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("approver_id") != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not your rejection to make")
+    if job.get("approval_status") != "pending":
+        raise HTTPException(status_code=400, detail=f"Job is not pending (status: {job.get('approval_status')})")
+    if not payload.reason or not payload.reason.strip():
+        raise HTTPException(status_code=400, detail="Rejection reason is required")
+    await db.jobs.update_one({"job_id": job_id}, {"$set": {
+        "approval_status": "rejected",
+        "rejection_reason": payload.reason.strip(),
+        "status": "cancelled",
+    }})
+    return {"ok": True}
 
 
 # ---------------- COMMERCIAL SERVICES TAXONOMY ----------------

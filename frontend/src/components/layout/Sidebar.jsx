@@ -13,6 +13,7 @@ const clientNav = [
     { to: '/my-job-posts', label: 'Job Posts & Bids', icon: Briefcase },
     { to: '/bookings', label: 'My Bookings', icon: CalendarCheck },
     { to: '/messages', label: 'Messages', icon: MessageSquare },
+    { to: '/tenancies', label: 'My Property Link', icon: KeyRound },
     { to: '/profile', label: 'Profile', icon: User },
   ]},
   { section: 'Explore', items: [
@@ -59,6 +60,8 @@ const providerNav = [
 const propertyNav = [
   { section: 'Portfolio', items: [
     { to: '/property/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/approvals', label: 'Approval Queue', icon: ShieldCheck },
+    { to: '/tenancies', label: 'Tenant Requests', icon: Users },
     { to: '/my-job-posts', label: 'Maintenance Jobs', icon: Wrench },
     { to: '/bookings', label: 'Bookings', icon: CalendarCheck },
     { to: '/messages', label: 'Messages', icon: MessageSquare },
@@ -74,6 +77,8 @@ const propertyNav = [
 const landlordNav = [
   { section: 'Rentals', items: [
     { to: '/landlord/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/approvals', label: 'Approval Queue', icon: ShieldCheck },
+    { to: '/tenancies', label: 'My Tenants', icon: Users },
     { to: '/property/dashboard', label: 'My Rentals', icon: HomeIcon2 },
     { to: '/my-job-posts', label: 'Maintenance', icon: Wrench },
     { to: '/bookings', label: 'Bookings', icon: CalendarCheck },
@@ -90,6 +95,8 @@ const landlordNav = [
 const facilitiesNav = [
   { section: 'Portal', items: [
     { to: '/facilities/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/approvals', label: 'Approval Queue', icon: ShieldCheck },
+    { to: '/tenancies', label: 'Tenant Requests', icon: Users },
     { to: '/property/dashboard', label: 'Sites', icon: Building2 },
     { to: '/my-job-posts', label: 'SLA Tickets', icon: ClipboardList },
     { to: '/bookings', label: 'Bookings', icon: CalendarCheck },
