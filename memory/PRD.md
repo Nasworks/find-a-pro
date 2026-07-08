@@ -24,6 +24,10 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
 ## What's Implemented (2026-02-08)
+- ✅ **Saved Pros / Favorite Providers (2026-02-08 P1)** — Customers, landlords, property managers and facilities users can bookmark providers and access them from a dedicated `/saved-providers` page.
+  - Backend: `POST /api/saved-providers/{provider_id}` (idempotent), `DELETE /api/saved-providers/{provider_id}`, `GET /api/saved-providers` (returns full provider cards ordered by most-recently-saved). Adds `is_saved` on `GET /api/providers/{id}` and `GET /api/providers/search`. 404 for missing provider, 400 for self-save.
+  - Frontend: heart toggle on every provider card in `/find-providers`, `Save Pro` / `Saved` button on `/providers/:id`, new `SavedProviders.jsx` page (empty state + card grid + unsave button). Sidebar link `Saved Pros` added to customer (Explore), landlord/property/facilities (Actions). Provider + Insurance roles intentionally excluded.
+  - Tests: `/app/backend/tests/test_saved_providers.py` (13/13 PASS).
 - ✅ **Rebrand to Pro Finder NZ (2026-02-08)** — new fern-mark logo, wordmark + NZ chip, title tag, all user-facing "Dispatchr" copy replaced (Login, Signup, ClientHome footer, JobDetail T&C, ProviderProfile message template, ReportProvider, GuideHelp, CostEstimator, LegalPrivacy, Referrals link, WarrantyClaims, backend API title/root/log/seed strings). LocalStorage keys and demo emails intentionally kept for continuity.
 
 ## What's Implemented (2026-02-07)
