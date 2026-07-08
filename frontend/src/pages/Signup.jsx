@@ -24,7 +24,7 @@ export default function Signup() {
     setLoading(true);
     try {
       const u = await register(form);
-      toast.success(`Welcome to Dispatchr, ${u.name}!`);
+      toast.success(`Welcome to Pro Finder NZ, ${u.name}!`);
       const target = u.role === 'provider' ? '/provider/dashboard'
         : u.role === 'property' ? '/property/dashboard'
         : u.role === 'landlord' ? '/landlord/dashboard'

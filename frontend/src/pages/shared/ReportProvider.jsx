@@ -21,7 +21,7 @@ export default function ReportProvider() {
     <div className="p-6 max-w-2xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Flag className="w-5 h-5 text-rose-500" /> Report a Provider</h1>
-        <p className="text-sm text-muted-foreground">Help us keep Dispatchr safe. All reports are confidential.</p>
+        <p className="text-sm text-muted-foreground">Help us keep Pro Finder NZ safe. All reports are confidential.</p>
       </div>
 
       <div className="bg-amber-50 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-800 rounded-2xl p-4 mb-6 flex items-start gap-3">

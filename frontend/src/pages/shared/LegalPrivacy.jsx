@@ -3,7 +3,7 @@ import { FileText, Shield, Scale, Download } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 
 const docs = [
-  { icon: Scale, title: 'Terms of Service', desc: 'Rules for using Dispatchr as a customer or provider', updated: 'Updated Jun 2026' },
+  { icon: Scale, title: 'Terms of Service', desc: 'Rules for using Pro Finder NZ as a customer or provider', updated: 'Updated Jun 2026' },
   { icon: Shield, title: 'Privacy Policy', desc: 'How we collect, use and protect your data (GDPR + Privacy Act NZ 2020)', updated: 'Updated Jun 2026' },
   { icon: FileText, title: 'Provider Agreement', desc: 'Terms specific to service providers, including commission and payout terms', updated: 'Updated May 2026' },
   { icon: FileText, title: 'Escrow Payment Policy', desc: 'How payments are held, released and refunded', updated: 'Updated Apr 2026' },

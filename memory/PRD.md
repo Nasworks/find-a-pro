@@ -1,7 +1,9 @@
-# Dispatchr — Product Requirements Document
+# Pro Finder NZ (formerly Dispatchr) — Product Requirements Document
 
 ## Original Problem Statement
 Rebuild the Replit app **Dispatchr** as a full production-ready web app with improved design and features. Full-stack React + FastAPI + MongoDB. Pixel-perfect feature parity with the provided Replit prototype, using Shadcn components and Tailwind CSS.
+
+**2026-02-08 REBRAND**: Application rebranded to **Pro Finder NZ**. New logo = silver-fern icon inside the existing primary→blue gradient badge + "Pro Finder" wordmark with an "NZ" accent chip. Color scheme unchanged.
 
 ## User Personas
 - **Customer / Homeowner** — posts jobs, hires trades, buys from marketplace
@@ -20,6 +22,9 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 6. **Community Forum** — role-scoped (provider vs customer/homeowner), fully functional with backend persistence, focused on property maintenance & renovations
 7. Live Map, News Feed, Cost Estimator, Community Forum, Legal & Privacy, Guide & Help, Report Provider, Disputes, More menu
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
+
+## What's Implemented (2026-02-08)
+- ✅ **Rebrand to Pro Finder NZ (2026-02-08)** — new fern-mark logo, wordmark + NZ chip, title tag, all user-facing "Dispatchr" copy replaced (Login, Signup, ClientHome footer, JobDetail T&C, ProviderProfile message template, ReportProvider, GuideHelp, CostEstimator, LegalPrivacy, Referrals link, WarrantyClaims, backend API title/root/log/seed strings). LocalStorage keys and demo emails intentionally kept for continuity.
 
 ## What's Implemented (2026-02-07)
 - ✅ **Provider Directory (2026-02-07)** — Freelancing-style catalog for end clients:

@@ -30,7 +30,7 @@ export default function ProviderProfile() {
 
   const startChat = async () => {
     try {
-      await api.post('/messages', { to_user_id: p.user_id, body: `Hi ${p.business_name}, I found your profile on Dispatchr and would like to discuss a job.` });
+      await api.post('/messages', { to_user_id: p.user_id, body: `Hi ${p.business_name}, I found your profile on Pro Finder NZ and would like to discuss a job.` });
       toast.success('Message sent');
       navigate('/messages');
     } catch { toast.error('Failed to send'); }

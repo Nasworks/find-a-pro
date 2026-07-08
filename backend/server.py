@@ -1,5 +1,5 @@
 """
-Dispatchr Backend - Home Services Marketplace
+Pro Finder NZ Backend - Home Services Marketplace
 """
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Cookie, Header
 from fastapi.responses import JSONResponse
@@ -30,7 +30,7 @@ db = client[DB_NAME]
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-app = FastAPI(title="Dispatchr API")
+app = FastAPI(title="Pro Finder NZ API")
 api = APIRouter(prefix="/api")
 
 
@@ -2277,7 +2277,7 @@ async def get_categories():
 
 @api.get("/")
 async def root():
-    return {"message": "Dispatchr API", "version": "1.0"}
+    return {"message": "Pro Finder NZ API", "version": "1.0"}
 
 
 # ---------------- SEED DATA ----------------
@@ -2352,7 +2352,7 @@ async def seed_data():
         ]
         _review_templates = [
             {"rating": 5, "text": "Punctual, tidy, and thorough. Job was done in half the time I expected.", "author": "Emma T."},
-            {"rating": 5, "text": "Best trade I've hired on Dispatchr. Fair price and cleaned up after themselves.", "author": "Jack R."},
+            {"rating": 5, "text": "Best trade I've hired on Pro Finder NZ. Fair price and cleaned up after themselves.", "author": "Jack R."},
             {"rating": 4, "text": "Good work. Quote came in a bit higher than others but quality was worth it.", "author": "Priya S."},
             {"rating": 5, "text": "Called at 8pm on a Sunday, showed up at 9am Monday. Life savers.", "author": "Ben M."},
             {"rating": 4, "text": "Solid. Communication could be a bit faster but the workmanship is spot on.", "author": "Anna K."},
@@ -2517,7 +2517,7 @@ async def seed_data():
              "body": "It's a 1970s weatherboard, ~180m² external wall area. Quotes are $6,500–$9,500. I've painted the interior myself. Am I insane to think I could do this in a couple of weekends with scaffolding hire? Or is this a rookie trap?",
              "tags": ["painting", "diy", "exterior"], "up": 45, "down": 1, "views": 288, "replies": 41, "days_ago": 2.5},
             {"category": "reviews", "title": "★★★★★ Sarah Chen Plumbing — burst pipe emergency, showed up in 40 min",
-             "body": "3am on Sunday, pipe burst in the wall. Called Dispatchr, Sarah's team dispatched within 20 min, on site in 40. Fixed it in an hour, minimal drywall damage, invoice was FAIR ($480 total incl after-hours). Cannot recommend enough. Booking her for our bathroom reno next month.",
+             "body": "3am on Sunday, pipe burst in the wall. Called Pro Finder NZ, Sarah's team dispatched within 20 min, on site in 40. Fixed it in an hour, minimal drywall damage, invoice was FAIR ($480 total incl after-hours). Cannot recommend enough. Booking her for our bathroom reno next month.",
              "tags": ["review", "plumbing", "emergency"], "up": 156, "down": 0, "views": 720, "replies": 22, "days_ago": 3.0},
             {"category": "smart-home", "title": "Heat pump vs central heating in a 1930s villa — 2 years in",
              "body": "We put in 3x Mitsubishi 5kW units instead of central. Total install cost $9,800 (subsidised).\n\nRunning costs Y1: $1,820. Y2: $1,650. Insulation matters more than the unit itself.\n\nRegrets? One — we should've done ceiling underlay before the heat pumps, not after. Would've saved $400/yr from day 1.",
@@ -2526,7 +2526,7 @@ async def seed_data():
              "body": "Just did compliance on my rental in Papakura. Total cost: $2,400 (insulation top-up + 2 extraction fans + moisture barrier). Sharing the checklist I used:\n\n• Ceiling insulation R2.9+\n• Underfloor R1.3+ (if accessible)\n• Extraction in kitchen (150mm+ vented outside)\n• Extraction in bathroom (120mm+)\n• Ground moisture barrier (150μm poly)\n• Draught stopping on doors + windows\n• Fixed heater in main living (heat pump ≥1.5kW per m² of floor)\n\nGet compliance statement PDF from your tradie — you'll need it if audited.",
              "tags": ["landlord", "healthy-homes", "compliance"], "up": 94, "down": 1, "views": 480, "replies": 31, "days_ago": 5.0},
             {"category": "disputes", "title": "Tiler left grout uneven — what are my rights?",
-             "body": "Paid $4,200 for bathroom tiling. Grout lines are visibly uneven (some 2mm, some 5mm) and one corner has cracked already after 3 weeks. Tiler says 'that's normal'. Is it? What's the process — call DBH, small claims, or file dispute through Dispatchr's mediation?",
+             "body": "Paid $4,200 for bathroom tiling. Grout lines are visibly uneven (some 2mm, some 5mm) and one corner has cracked already after 3 weeks. Tiler says 'that's normal'. Is it? What's the process — call DBH, small claims, or file dispute through Pro Finder NZ's mediation?",
              "tags": ["dispute", "warranty", "tiling"], "up": 33, "down": 0, "views": 210, "replies": 47, "days_ago": 6.0},
             {"category": "maintenance", "title": "Best drain camera for renters — recommendations?",
              "body": "Our shower drain blocks every 2 months. Landlord won't send anyone until it's fully blocked. Thinking of buying a cheap borescope to see what's going on. Anything under $150 that actually works? Or is this a false economy?",
@@ -2625,7 +2625,7 @@ async def seed_data():
 @app.on_event("startup")
 async def on_startup():
     await seed_data()
-    logging.info("Dispatchr startup complete")
+    logging.info("Pro Finder NZ startup complete")
 
 
 @app.on_event("shutdown")

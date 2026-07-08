@@ -13,7 +13,7 @@ export default function Referrals() {
     api.get('/referrals/mine').then((r) => setData(r.data));
   }, []);
 
-  const inviteLink = `https://dispatchr.co/join?code=${data.invite_code}`;
+  const inviteLink = `https://profinder.nz/join?code=${data.invite_code}`;
   const copy = () => { navigator.clipboard.writeText(inviteLink); toast.success('Copied to clipboard'); };
 
   return (

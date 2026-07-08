@@ -147,7 +147,7 @@ export default function JobDetail() {
               <Button className="w-full" size="lg" onClick={() => setTab('bids')}>Review {activeBids.length} bids</Button>
             )}
             <div className="bg-card border border-border rounded-2xl p-4 text-sm">
-              <div className="flex items-center gap-2 font-semibold text-foreground"><ShieldCheck className="w-4 h-4 text-emerald-500" /> Dispatchr Protection</div>
+              <div className="flex items-center gap-2 font-semibold text-foreground"><ShieldCheck className="w-4 h-4 text-emerald-500" /> Pro Finder Protection</div>
               <p className="text-xs text-muted-foreground mt-2">Every provider is background-checked, insured, and rated. Payments held in escrow until work is verified.</p>
             </div>
           </aside>
@@ -222,11 +222,11 @@ export default function JobDetail() {
 
       {tab === 'terms' && (
         <div className="mt-6 bg-card border border-border rounded-2xl p-6 text-sm space-y-3 text-foreground/90">
-          <h3 className="font-semibold text-foreground text-base">Standard Dispatchr Terms</h3>
+          <h3 className="font-semibold text-foreground text-base">Standard Pro Finder NZ Terms</h3>
           <p><strong>1. Payment:</strong> Funds are held in escrow when a bid is accepted. Provider is paid on completion sign-off or after a 48h auto-release if no dispute is raised.</p>
           <p><strong>2. Warranty:</strong> All jobs include a standard 12-month workmanship warranty unless the provider offers longer terms in their bid.</p>
           <p><strong>3. Cancellation:</strong> Free cancellation up to 24 hours before scheduled start. Later cancellations may incur a 20% call-out fee.</p>
-          <p><strong>4. Disputes:</strong> Dispatchr mediates any dispute within 5 business days. Both parties may upload evidence.</p>
+          <p><strong>4. Disputes:</strong> Pro Finder NZ mediates any dispute within 5 business days. Both parties may upload evidence.</p>
           <p><strong>5. Health & Safety:</strong> Providers must comply with NZ H&S at Work Act 2015. Insurance certificates available on request.</p>
           <p><strong>6. Additional terms:</strong> Each provider may include their own supplementary terms in their bid. Review carefully before accepting.</p>
         </div>
@@ -533,7 +533,7 @@ function BidSubmissionDialog({ mode, bid, job, onClose, onSuccess }) {
           <label className="flex items-start gap-3 p-3 rounded-lg bg-muted/40 border border-border cursor-pointer">
             <Checkbox checked={form.acceptTerms} onCheckedChange={(v) => update('acceptTerms', !!v)} className="mt-0.5" />
             <div className="text-xs text-foreground/90">
-              I confirm I am licensed &amp; insured for this work, that my bid is honest and complete, and I agree to Dispatchr&apos;s <span className="text-primary">Provider Terms of Service</span> and <span className="text-primary">Escrow Payment Policy</span>.
+              I confirm I am licensed &amp; insured for this work, that my bid is honest and complete, and I agree to Pro Finder NZ&apos;s <span className="text-primary">Provider Terms of Service</span> and <span className="text-primary">Escrow Payment Policy</span>.
             </div>
           </label>
 

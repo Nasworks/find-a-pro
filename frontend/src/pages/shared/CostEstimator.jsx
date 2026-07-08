@@ -32,7 +32,7 @@ export default function CostEstimator() {
         <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
         <div className="text-sm">
           <div className="font-semibold text-foreground">How does it work?</div>
-          <p className="text-muted-foreground mt-1">These are median prices from real Dispatchr jobs. Actual quotes vary based on site conditions, materials & urgency.</p>
+          <p className="text-muted-foreground mt-1">These are median prices from real Pro Finder NZ jobs. Actual quotes vary based on site conditions, materials & urgency.</p>
         </div>
       </div>
 

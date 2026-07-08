@@ -223,7 +223,7 @@ export default function ClientHome() {
 
         <div className="bg-gradient-to-br from-primary to-blue-700 rounded-2xl p-5 text-white">
           <div className="flex items-center gap-2 text-xs font-medium mb-1 opacity-90">
-            <Sparkles className="w-3.5 h-3.5" /> Dispatchr Trusted
+            <Sparkles className="w-3.5 h-3.5" /> Pro Finder Trusted
           </div>
           <div className="font-semibold">Verified Pros. Guaranteed work.</div>
           <div className="text-sm opacity-90 mt-1">Every provider is background-checked, insured and rated by real customers.</div>
@@ -231,10 +231,10 @@ export default function ClientHome() {
         </div>
 
         <div className="bg-card border border-border rounded-2xl p-5 text-sm text-muted-foreground space-y-1">
-          <div className="font-medium text-foreground mb-2">Dispatchr</div>
+          <div className="font-medium text-foreground mb-2">Pro Finder NZ</div>
           <div>Help · Contact · About</div>
           <div>Terms · Privacy · For Pros</div>
-          <div className="mt-3 text-xs">© 2026 Dispatchr. All rights reserved.</div>
+          <div className="mt-3 text-xs">© 2026 Pro Finder NZ. All rights reserved.</div>
         </div>
       </aside>
 

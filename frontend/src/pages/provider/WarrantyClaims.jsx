@@ -49,8 +49,8 @@ export default function WarrantyClaims() {
       <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-6 flex items-start gap-3">
         <Shield className="w-5 h-5 text-primary shrink-0 mt-0.5" />
         <div className="text-sm">
-          <div className="font-semibold text-foreground">Dispatchr Warranty Protection</div>
-          <p className="text-muted-foreground mt-1">All jobs booked through Dispatchr include workmanship warranty. If something&apos;s not right, we&apos;ll mediate resolution within 5 business days.</p>
+          <div className="font-semibold text-foreground">Pro Finder NZ Warranty Protection</div>
+          <p className="text-muted-foreground mt-1">All jobs booked through Pro Finder NZ include workmanship warranty. If something&apos;s not right, we&apos;ll mediate resolution within 5 business days.</p>
         </div>
       </div>
 
