@@ -455,6 +455,87 @@ async def login(payload: UserLogin, response: Response):
     return {"user": user, "token": token}
 
 
+# Demo accounts (idempotent, seeded on startup). One-click preview login by role.
+DEMO_ROLES = ["customer", "provider", "property", "landlord", "facilities", "insurance"]
+DEMO_EMAIL = {r: f"demo-{r}@profinder.nz" for r in DEMO_ROLES}
+DEMO_NAME = {
+    "customer": "Demo Customer",
+    "provider": "Demo Trade Co.",
+    "property": "Demo Property Manager",
+    "landlord": "Demo Landlord",
+    "facilities": "Demo Facilities Manager",
+    "insurance": "Demo Insurance Partner",
+}
+
+
+@api.post("/auth/demo-login")
+async def demo_login(request: Request, response: Response):
+    """One-click login as a seeded demo account for a given role. Preview-only convenience."""
+    body = await request.json()
+    role = (body.get("role") or "").strip().lower()
+    if role not in DEMO_ROLES:
+        raise HTTPException(status_code=400, detail=f"Unknown demo role. Use one of {DEMO_ROLES}")
+    user = await db.users.find_one({"email": DEMO_EMAIL[role]})
+    if not user:
+        # Lazy-provision if the seed hasn't run for some reason.
+        await _ensure_demo_account(role)
+        user = await db.users.find_one({"email": DEMO_EMAIL[role]})
+    if not user:
+        raise HTTPException(status_code=500, detail="Failed to provision demo account")
+    token = create_jwt(user["user_id"])
+    set_auth_cookie(response, token)
+    user.pop("_id", None)
+    user.pop("password_hash", None)
+    return {"user": user, "token": token, "demo": True}
+
+
+async def _ensure_demo_account(role: str) -> None:
+    email = DEMO_EMAIL[role]
+    if await db.users.find_one({"email": email}, {"_id": 1}):
+        return
+    user_id = f"demo_{role}_{uuid.uuid4().hex[:8]}"
+    await db.users.insert_one({
+        "user_id": user_id,
+        "email": email,
+        "name": DEMO_NAME[role],
+        "role": role,
+        "phone": None,
+        "picture": None,
+        "city": "Auckland",
+        "password_hash": hash_password("Demo123!"),
+        "created_at": datetime.now(timezone.utc),
+        "is_demo": True,
+    })
+    if role == "provider":
+        await db.provider_profiles.insert_one({
+            "user_id": user_id,
+            "business_name": DEMO_NAME[role],
+            "categories": ["handyman"],
+            "subcategories": [],
+            "hourly_rate": 75.0,
+            "rating": 4.8,
+            "reviews_count": 24,
+            "jobs_completed": 41,
+            "verified": True,
+            "insured": True,
+            "background_checked": True,
+            "accredited": True,
+            "plan": "pro",
+            "online": True,
+            "bio": "Demo provider account — explore the Service Provider dashboard here.",
+            "response_time_hours": 2,
+            "years_in_business": 6,
+            "gallery": [],
+            "latitude": -36.8485,
+            "longitude": 174.7633,
+        })
+
+
+async def seed_demo_accounts() -> None:
+    for r in DEMO_ROLES:
+        await _ensure_demo_account(r)
+
+
 @api.post("/auth/session")
 async def google_session(request: Request, response: Response):
     """Emergent Google OAuth session exchange."""
@@ -2684,6 +2765,7 @@ async def seed_data():
 @app.on_event("startup")
 async def on_startup():
     await seed_data()
+    await seed_demo_accounts()
     logging.info("Pro Finder NZ startup complete")
 
 

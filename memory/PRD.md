@@ -24,6 +24,7 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
 ## What's Implemented (2026-02-08)
+- ✅ **One-click Demo Login (2026-02-08)** — six seeded demo accounts (one per role) with a "Try the app instantly" panel on `/login`. Backend `POST /api/auth/demo-login` `{role}` returns the seeded account and sets the auth cookie. Accounts persist so users can save data between demo sessions. Full credentials in `/app/memory/test_credentials.md`.
 - ✅ **Saved Pros / Favorite Providers (2026-02-08 P1)** — Customers, landlords, property managers and facilities users can bookmark providers and access them from a dedicated `/saved-providers` page.
   - Backend: `POST /api/saved-providers/{provider_id}` (idempotent), `DELETE /api/saved-providers/{provider_id}`, `GET /api/saved-providers` (returns full provider cards ordered by most-recently-saved). Adds `is_saved` on `GET /api/providers/{id}` and `GET /api/providers/search`. 404 for missing provider, 400 for self-save.
   - Frontend: heart toggle on every provider card in `/find-providers`, `Save Pro` / `Saved` button on `/providers/:id`, new `SavedProviders.jsx` page (empty state + card grid + unsave button). Sidebar link `Saved Pros` added to customer (Explore), landlord/property/facilities (Actions). Provider + Insurance roles intentionally excluded.

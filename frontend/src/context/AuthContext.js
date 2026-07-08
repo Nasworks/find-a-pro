@@ -38,6 +38,12 @@ export const AuthProvider = ({ children }) => {
     return res.data.user;
   }, []);
 
+  const demoLogin = useCallback(async (role) => {
+    const res = await api.post('/auth/demo-login', { role });
+    setUser(res.data.user);
+    return res.data.user;
+  }, []);
+
   const register = useCallback(async (payload) => {
     const res = await api.post('/auth/register', payload);
     setUser(res.data.user);
@@ -59,7 +65,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, switchRole, refresh: checkAuth, setUser }}>
+    <AuthContext.Provider value={{ user, loading, login, demoLogin, register, logout, switchRole, refresh: checkAuth, setUser }}>
       {children}
     </AuthContext.Provider>
   );

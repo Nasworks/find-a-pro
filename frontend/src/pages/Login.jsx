@@ -5,15 +5,34 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2, User as UserIcon, Wrench, Building2, KeyRound, Shield, HardHat, Sparkles } from 'lucide-react';
 import Logo from '../components/Logo';
 import { extractError } from '../lib/errors';
+
+const ROLE_TO_PATH = {
+  provider: '/provider/dashboard',
+  property: '/property/dashboard',
+  landlord: '/landlord/dashboard',
+  facilities: '/facilities/dashboard',
+  insurance: '/insurance/dashboard',
+  customer: '/client-home',
+};
+
+const DEMO_ROLES = [
+  { id: 'customer',   label: 'Customer',       icon: UserIcon, color: 'bg-blue-500' },
+  { id: 'provider',   label: 'Service Provider', icon: Wrench,   color: 'bg-emerald-500' },
+  { id: 'property',   label: 'Property Manager', icon: Building2, color: 'bg-violet-500' },
+  { id: 'landlord',   label: 'Landlord',       icon: KeyRound,  color: 'bg-orange-500' },
+  { id: 'facilities', label: 'Facilities',     icon: HardHat,   color: 'bg-slate-600' },
+  { id: 'insurance',  label: 'Insurance',      icon: Shield,    color: 'bg-teal-500' },
+];
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [demoBusy, setDemoBusy] = useState(null);
+  const { login, demoLogin } = useAuth();
   const navigate = useNavigate();
 
   const submit = async (e) => {
@@ -22,13 +41,7 @@ export default function Login() {
     try {
       const u = await login(email, password);
       toast.success(`Welcome back, ${u.name}!`);
-      const target = u.role === 'provider' ? '/provider/dashboard'
-        : u.role === 'property' ? '/property/dashboard'
-        : u.role === 'landlord' ? '/landlord/dashboard'
-        : u.role === 'facilities' ? '/facilities/dashboard'
-        : u.role === 'insurance' ? '/insurance/dashboard'
-        : '/client-home';
-      navigate(target);
+      navigate(ROLE_TO_PATH[u.role] || '/client-home');
     } catch (err) {
       toast.error(extractError(err, 'Login failed'));
     } finally {
@@ -42,10 +55,57 @@ export default function Login() {
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   };
 
+  const tryDemo = async (roleId) => {
+    if (demoBusy) return;
+    setDemoBusy(roleId);
+    try {
+      const u = await demoLogin(roleId);
+      toast.success(`Signed in as ${u.name}`);
+      navigate(ROLE_TO_PATH[u.role] || '/client-home');
+    } catch (err) {
+      toast.error(extractError(err, 'Demo login failed'));
+    } finally {
+      setDemoBusy(null);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-accent/30 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-accent/30 px-4 py-10">
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-8"><Logo size="lg" /></div>
+
+        {/* Demo login panel */}
+        <div className="bg-card border border-primary/30 rounded-2xl p-5 mb-4 shadow-lg shadow-primary/5" data-testid="demo-login-panel">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-primary bg-primary/10 border border-primary/20 rounded-full px-2 py-0.5">
+              <Sparkles className="w-3 h-3" /> Preview
+            </span>
+            <h2 className="text-base font-semibold text-foreground">Try the app instantly</h2>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">One-click sign-in as any account type. No signup, no password.</p>
+          <div className="grid grid-cols-2 gap-2">
+            {DEMO_ROLES.map((r) => {
+              const Icon = r.icon;
+              const busy = demoBusy === r.id;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  data-testid={`demo-login-${r.id}`}
+                  onClick={() => tryDemo(r.id)}
+                  disabled={!!demoBusy}
+                  className="group flex items-center gap-2 p-2.5 rounded-xl border border-border hover:border-primary/40 hover:bg-accent/40 transition-all disabled:opacity-60 disabled:cursor-not-allowed text-left"
+                >
+                  <div className={`w-8 h-8 rounded-lg ${r.color} text-white flex items-center justify-center shrink-0`}>
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Icon className="w-4 h-4" />}
+                  </div>
+                  <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors leading-tight">{r.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="bg-card border border-border rounded-2xl p-8 shadow-xl shadow-primary/5">
           <h1 className="text-2xl font-bold text-foreground">Welcome back</h1>
           <p className="text-muted-foreground text-sm mt-1">Log in to your Pro Finder NZ account</p>
@@ -79,3 +139,4 @@ export default function Login() {
     </div>
   );
 }
+
