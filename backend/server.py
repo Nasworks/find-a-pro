@@ -1092,6 +1092,97 @@ async def nearby_providers(category: Optional[str] = None):
     return profiles
 
 
+# ---------------- PROVIDER DIRECTORY (customer-facing browse & profile) ----------------
+def _rate_bucket(hourly_rate: float) -> str:
+    if hourly_rate < 60:
+        return "low"
+    if hourly_rate < 100:
+        return "medium"
+    return "high"
+
+
+@api.get("/providers/search")
+async def search_providers(
+    category: Optional[str] = None,
+    subcategory: Optional[str] = None,
+    q: Optional[str] = None,
+    min_rating: Optional[float] = None,
+    min_reviews: Optional[int] = None,
+    min_jobs: Optional[int] = None,
+    rate_bucket: Optional[str] = None,   # 'low' | 'medium' | 'high'
+    verified_only: bool = False,
+    background_checked: bool = False,
+    accredited: bool = False,
+    sort: str = "best_match",             # best_match | rating | price_asc | price_desc | reviews
+    limit: int = 60,
+    user=Depends(require_user),
+):
+    """Customer-facing provider directory search. Filter + sort providers by category/subcategory/etc."""
+    query: Dict[str, Any] = {}
+    if category:
+        query["categories"] = category
+    if subcategory:
+        query["subcategories"] = subcategory
+    if verified_only:
+        query["verified"] = True
+    if q:
+        query["$or"] = [
+            {"business_name": {"$regex": q, "$options": "i"}},
+            {"bio": {"$regex": q, "$options": "i"}},
+        ]
+    profiles = await db.provider_profiles.find(query, {"_id": 0}).to_list(500)
+    # Filter in Python for fields that may not be indexed / stored on the record
+    def keep(p: Dict[str, Any]) -> bool:
+        if min_rating is not None and (p.get("rating") or 0) < min_rating:
+            return False
+        if min_reviews is not None and (p.get("reviews_count") or 0) < min_reviews:
+            return False
+        if min_jobs is not None and (p.get("jobs_completed") or 0) < min_jobs:
+            return False
+        if rate_bucket:
+            b = _rate_bucket(p.get("hourly_rate", 85))
+            if b != rate_bucket:
+                return False
+        if background_checked and not p.get("background_checked", False):
+            return False
+        if accredited and not p.get("accredited", False):
+            return False
+        return True
+    profiles = [p for p in profiles if keep(p)]
+    # Sort
+    if sort == "rating":
+        profiles.sort(key=lambda p: (p.get("rating", 0), p.get("reviews_count", 0)), reverse=True)
+    elif sort == "reviews":
+        profiles.sort(key=lambda p: p.get("reviews_count", 0), reverse=True)
+    elif sort == "price_asc":
+        profiles.sort(key=lambda p: p.get("hourly_rate", 999))
+    elif sort == "price_desc":
+        profiles.sort(key=lambda p: p.get("hourly_rate", 0), reverse=True)
+    else:  # best_match — combines rating * log(reviews+1) with slight boost for verified+high jobs
+        import math
+        def score(p: Dict[str, Any]) -> float:
+            r = p.get("rating", 0)
+            rc = p.get("reviews_count", 0)
+            jc = p.get("jobs_completed", 0)
+            v = 1.1 if p.get("verified") else 1.0
+            return (r * (1 + math.log10(rc + 1)) + jc * 0.02) * v
+        profiles.sort(key=score, reverse=True)
+    profiles = profiles[:limit]
+    # Enrich with user picture + hydrate a couple of computed fields
+    if profiles:
+        ids = [p["user_id"] for p in profiles]
+        users = await db.users.find({"user_id": {"$in": ids}}, {"_id": 0, "password_hash": 0}).to_list(None)
+        umap = {u["user_id"]: u for u in users}
+        for p in profiles:
+            u = umap.get(p["user_id"]) or {}
+            p["picture"] = u.get("picture")
+            p["rate_bucket"] = _rate_bucket(p.get("hourly_rate", 85))
+    return {"count": len(profiles), "results": profiles}
+
+
+# ---------------- END PROVIDER DIRECTORY (parametric route defined below /providers/me) ----------------
+
+
 @api.get("/providers/me")
 async def my_provider_profile(user=Depends(require_user)):
     p = await db.provider_profiles.find_one({"user_id": user["user_id"]}, {"_id": 0})
@@ -1106,6 +1197,24 @@ async def update_provider(request: Request, user=Depends(require_user)):
     allowed = {k: v for k, v in body.items() if k in ["business_name", "categories", "hourly_rate", "bio", "online", "plan"]}
     await db.provider_profiles.update_one({"user_id": user["user_id"]}, {"$set": allowed}, upsert=True)
     p = await db.provider_profiles.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return p
+
+
+@api.get("/providers/{provider_id}")
+async def provider_profile(provider_id: str, user=Depends(require_user)):
+    p = await db.provider_profiles.find_one({"user_id": provider_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    u = await db.users.find_one({"user_id": provider_id}, {"_id": 0, "password_hash": 0})
+    if u:
+        p["name"] = u.get("name")
+        p["picture"] = u.get("picture")
+        p["member_since"] = u.get("created_at")
+    p["rate_bucket"] = _rate_bucket(p.get("hourly_rate", 85))
+    bids = await db.bids.find({"provider_id": provider_id, "status": {"$in": ["accepted", "completed"]}}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    p["past_jobs"] = bids
+    reviews = await db.provider_reviews.find({"provider_id": provider_id}, {"_id": 0}).sort("created_at", -1).to_list(30)
+    p["reviews"] = reviews
     return p
 
 
@@ -2230,6 +2339,21 @@ async def seed_data():
             {"name": "PainterPro NZ", "email": "painterpro@dispatchr.demo", "cats": ["painting"], "lat": -36.8785, "lng": 174.7033, "rate": 65.0, "rating": 4.6, "reviews": 89, "jobs": 145},
             {"name": "Roofline Experts", "email": "roofline@dispatchr.demo", "cats": ["roofing"], "lat": -36.8185, "lng": 174.7833, "rate": 110.0, "rating": 4.8, "reviews": 54, "jobs": 92},
         ]
+        # Rich provider gallery + review templates for the directory browse UI
+        _stock_gallery = [
+            "https://images.unsplash.com/photo-1581091012184-5c5c1e64eae2?w=800&q=80",
+            "https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=800&q=80",
+            "https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=800&q=80",
+            "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80",
+            "https://images.unsplash.com/photo-1583847268964-b28dc8f51f92?w=800&q=80",
+        ]
+        _review_templates = [
+            {"rating": 5, "text": "Punctual, tidy, and thorough. Job was done in half the time I expected.", "author": "Emma T."},
+            {"rating": 5, "text": "Best trade I've hired on Dispatchr. Fair price and cleaned up after themselves.", "author": "Jack R."},
+            {"rating": 4, "text": "Good work. Quote came in a bit higher than others but quality was worth it.", "author": "Priya S."},
+            {"rating": 5, "text": "Called at 8pm on a Sunday, showed up at 9am Monday. Life savers.", "author": "Ben M."},
+            {"rating": 4, "text": "Solid. Communication could be a bit faster but the workmanship is spot on.", "author": "Anna K."},
+        ]
         for p in demo_providers:
             uid = f"user_{uuid.uuid4().hex[:12]}"
             await db.users.insert_one({
@@ -2246,18 +2370,34 @@ async def seed_data():
                 "user_id": uid,
                 "business_name": p["name"],
                 "categories": p["cats"],
+                "subcategories": p.get("subs", []),
                 "hourly_rate": p["rate"],
                 "rating": p["rating"],
                 "reviews_count": p["reviews"],
                 "jobs_completed": p["jobs"],
                 "verified": True,
                 "insured": True,
+                "background_checked": p["reviews"] > 30,
+                "accredited": p["reviews"] > 50,
+                "response_time_hours": 2 if p["reviews"] > 100 else 6,
+                "years_in_business": max(3, p["jobs"] // 40),
+                "gallery": _stock_gallery[:4],
                 "plan": "pro",
                 "latitude": p["lat"],
                 "longitude": p["lng"],
                 "online": True,
-                "bio": f"Trusted {p['cats'][0]} professionals in Auckland.",
+                "bio": f"Trusted {p['cats'][0]} professional in Auckland with {p['jobs']}+ completed jobs. Fully insured, licensed, and background-checked. Available 7 days a week for {p['cats'][0]} repairs, installations, and maintenance.",
             })
+            # Seed 3 reviews per provider
+            for i, tmpl in enumerate(_review_templates[:3]):
+                await db.provider_reviews.insert_one({
+                    "review_id": f"rev_{uuid.uuid4().hex[:10]}",
+                    "provider_id": uid,
+                    "author_name": tmpl["author"],
+                    "rating": tmpl["rating"],
+                    "text": tmpl["text"],
+                    "created_at": datetime.now(timezone.utc) - timedelta(days=i * 14 + 3),
+                })
 
     # FEED POSTS
     if await db.feed_posts.count_documents({}) == 0:

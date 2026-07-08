@@ -17,6 +17,7 @@ const clientNav = [
     { to: '/profile', label: 'Profile', icon: User },
   ]},
   { section: 'Explore', items: [
+    { to: '/find-providers', label: 'Find Providers', icon: Users },
     { to: '/live-map', label: 'Live Map', icon: Map },
     { to: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
     { to: '/news-feed', label: 'News Feed', icon: Newspaper },
@@ -68,6 +69,7 @@ const propertyNav = [
   ]},
   { section: 'Actions', items: [
     { to: '/post-job', label: 'Post a Job', icon: Plus, highlight: true },
+    { to: '/find-providers', label: 'Find Providers', icon: Users },
     { to: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/more', label: 'More', icon: MoreHorizontal },
@@ -86,6 +88,7 @@ const landlordNav = [
   ]},
   { section: 'Actions', items: [
     { to: '/post-job', label: 'Request Maintenance', icon: Plus, highlight: true },
+    { to: '/find-providers', label: 'Find Providers', icon: Users },
     { to: '/cost-estimator', label: 'Cost Estimator', icon: DollarSign },
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/more', label: 'More', icon: MoreHorizontal },
@@ -104,6 +107,7 @@ const facilitiesNav = [
   ]},
   { section: 'Actions', items: [
     { to: '/post-job', label: 'Log Ticket', icon: Plus, highlight: true },
+    { to: '/find-providers', label: 'Find Providers', icon: Users },
     { to: '/cost-estimator', label: 'Cost Estimator', icon: DollarSign },
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/more', label: 'More', icon: MoreHorizontal },

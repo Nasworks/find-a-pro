@@ -54,6 +54,8 @@ import CommunityForum from './pages/shared/CommunityForum';
 import ForumPostDetail from './pages/shared/ForumPostDetail';
 import Tenancies from './pages/shared/Tenancies';
 import ApprovalQueue from './pages/shared/ApprovalQueue';
+import FindProviders from './pages/shared/FindProviders';
+import ProviderProfile from './pages/shared/ProviderProfile';
 import LegalPrivacy from './pages/shared/LegalPrivacy';
 import ReportProvider from './pages/shared/ReportProvider';
 import MyDisputes from './pages/shared/MyDisputes';
@@ -147,6 +149,8 @@ function AppRouter() {
         <Route path="/community-forum/:postId" element={<ForumPostDetail />} />
         <Route path="/tenancies" element={<Tenancies />} />
         <Route path="/approvals" element={<ApprovalQueue />} />
+        <Route path="/find-providers" element={<FindProviders />} />
+        <Route path="/providers/:providerId" element={<ProviderProfile />} />
         <Route path="/legal-privacy" element={<LegalPrivacy />} />
         <Route path="/report-provider" element={<ReportProvider />} />
         <Route path="/my-disputes" element={<MyDisputes />} />
