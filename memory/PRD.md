@@ -21,12 +21,28 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 7. Live Map, News Feed, Cost Estimator, Community Forum, Legal & Privacy, Guide & Help, Report Provider, Disputes, More menu
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
-## What's Implemented (2026-02-06)
-- ✅ **Sidebar refactor (2026-02-06)**: Extracted into 4 files — `Sidebar.jsx` (~90 lines, was 240), `SidebarNavSection.jsx`, `SidebarFooter.jsx`, `SwitchRoleDialog.jsx`. All data-testids preserved, zero behavioral regressions verified by testing agent.
-- ✅ **Forum unique-viewer tracking (2026-02-06)**: `viewers` set via `$addToSet`, views only increment on first visit by a user, author never counts as a viewer, `viewers` array stripped from response.
-- ✅ **Forum nested replies (2026-02-06)**: `parent_reply_id` supported on `POST /api/forum/posts/{id}/replies`, frontend `flattenTree` + `ReplyItem` renders replies indented (`marginLeft: depth*16px`), per-reply "Reply" button opens threaded composer with `@Author` pre-mention and scrolls into view, Cancel-thread button resets composer.
-- ✅ **Lint cleanup (2026-02-06)**: Escaped apostrophes/quotes in LandingRoleSelect, PostJob, Referrals, WarrantyClaims, JobDetail, ServicePicker.
-- ✅ **A11y (2026-02-06)**: `DialogDescription` added to SwitchRoleDialog (Radix warning resolved).
+## What's Implemented (2026-02-07)
+- ✅ **Provider Directory (2026-02-07)** — Freelancing-style catalog for end clients:
+  - Backend: `GET /api/providers/search` with filters (category, subcategory, min_rating, min_reviews, min_jobs, rate_bucket low/med/high, verified_only, background_checked, accredited, q) + sort (best_match, rating, reviews, price_asc, price_desc). Response `{count, results[]}`. Empty freshly-registered providers gated out (require bio + rating>0).
+  - Backend: `GET /api/providers/{provider_id}` returns full profile — bio, gallery (4 stock images), reviews (3 seeded per provider), past_jobs, rate_bucket, response_time_hours, years_in_business, credential flags.
+  - Backend seed enhanced: 9 providers with subcategories, gallery URLs (all 4 valid), 3 reviews each, background_checked, accredited, response_time_hours, years_in_business.
+  - Frontend `/find-providers` — 3-col grid of provider cards, sticky filter sidebar (rate buckets, rating pills, review pills, job pills, trust & safety toggles), sort dropdown, search box, active filter chips, ServicePicker integration.
+  - Frontend `/providers/:providerId` — hero with credential badges + hourly rate + Message/Invite CTAs, About, Services, Past Work gallery (4 imgs), Reviews with 5-star display.
+  - Sidebar link "Find Providers" added to customer, landlord, property, facilities navs.
+- ✅ **Tenant → Manager Approval Workflow (2026-02-07)**:
+  - Backend Tenancy model + endpoints (POST /api/tenancies, GET /mine, POST /{id}/approve, /reject, DELETE)
+  - JobPost extended: `tenancy_id`, `tenant_id`, `approver_id`, `approval_status`, `approved_at`, `rejection_reason`, `assigned_provider_id`, `billing_target`
+  - `POST /api/jobs` routes via manager when `route_via_manager=true` and active tenancy exists
+  - `POST /api/jobs/{id}/approve` — landlord approves with optional preferred provider + open_to_bids toggle
+  - `POST /api/jobs/{id}/reject` — requires reason, sets job.status=cancelled
+  - `GET /api/approvals/queue` (approvers only) + `/preferred-providers`
+  - `GET /api/jobs/board` filtered to approval_status in [not_required, approved] so providers only see approved jobs
+  - Frontend `/tenancies` (tenant + approver views) and `/approvals` (queue with approve/reject dialogs)
+  - PostJob banner with "Send to manager" / "Book on my own" toggle
+  - Sidebar links: "Approval Queue" (landlord/property/facilities) + "My Property Link" (customer)
+- ✅ **Sidebar refactor** — 4 files (Sidebar, SidebarNavSection, SidebarFooter, SwitchRoleDialog)
+- ✅ **Forum unique-viewer tracking + nested reply UI**
+- ✅ **Dark mode default** for first-time visitors + new hero heading
 - ✅ **Desktop / Mobile View Mode Toggle**:
   - `ViewModeContext` — persisted `dispatchr_view_mode` in localStorage, lazy-initialized, auto-detects mobile if browser width < 768px on first visit
   - `ViewModeToggle` button in TopBar (desktop), MobileTopBar, Landing header, and Sidebar footer (data-testid `view-mode-toggle`, `sidebar-view-mode-toggle`)
