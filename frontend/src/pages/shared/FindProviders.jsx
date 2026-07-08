@@ -92,12 +92,19 @@ export default function FindProviders() {
   }, [filters]);
 
   const clearChip = (k) => {
-    if (k === 'category') set('category', '') || set('subcategory', '') || set('category_name', '') || set('subcategory_name', '');
-    else if (k === 'rate_bucket') set('rate_bucket', '');
-    else if (k === 'verified_only') set('verified_only', false);
-    else if (k === 'background_checked') set('background_checked', false);
-    else if (k === 'accredited') set('accredited', false);
-    else set(k, 'any');
+    if (k === 'category') {
+      setFilters((f) => ({ ...f, category: '', subcategory: '', category_name: '', subcategory_name: '' }));
+    } else if (k === 'rate_bucket') {
+      set('rate_bucket', '');
+    } else if (k === 'verified_only') {
+      set('verified_only', false);
+    } else if (k === 'background_checked') {
+      set('background_checked', false);
+    } else if (k === 'accredited') {
+      set('accredited', false);
+    } else {
+      set(k, 'any');
+    }
   };
 
   return (

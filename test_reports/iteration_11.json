@@ -1,0 +1,20 @@
+{
+  "summary": "Iteration 11 fixes verified. Backend: 6/6 pytest pass — new Unsplash URL returns 200, all 9 seeded providers each expose 4 valid gallery URLs (HEAD 200), fresh empty provider signup is correctly gated out (count stays at 9), provider detail includes gallery+reviews+rate_bucket. Frontend: /find-providers renders 9 cards, no broken images on grid or profile pages, clearChip refactor works cleanly (chip removed, no page errors, sort/rating/service picker/nav all functional).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_provider_directory_fixes.py",
+    "/app/test_reports/pytest/iter11.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Empty-provider gate at server.py:1136 uses `bio AND rating>0` — but a freshly registered provider is seeded with rating=4.7 (server.py:428). Gate works only because bio starts as ''. If future code defaults bio to any non-empty string, empty providers will re-appear. Consider using an explicit `profile_completed` flag instead of relying on bio truthiness.",
+    "/api/providers/search response shape changed to {count, results} — ensure all frontend consumers are updated; existing test suite expectations from prior iterations may break."
+  ],
+  "updated_files": ["/app/backend/tests/test_provider_directory_fixes.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created a couple of TEST_ prefixed customer+provider users via /api/auth/register to validate the gate; harmless.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 11 targeted three fixes and all pass. Backend regression file at /app/backend/tests/test_provider_directory_fixes.py covers image URL, seed count=9, gallery validity, provider detail, empty-provider gate. Response of /api/providers/search is {count, results:[...]}, not a bare list."
+}

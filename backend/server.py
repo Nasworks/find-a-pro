@@ -1131,6 +1131,9 @@ async def search_providers(
             {"bio": {"$regex": q, "$options": "i"}},
         ]
     profiles = await db.provider_profiles.find(query, {"_id": 0}).to_list(500)
+    # Hide freshly-registered empty providers from the customer catalog
+    # (require a bio OR at least one review to be visible).
+    profiles = [p for p in profiles if (p.get("bio") and (p.get("rating") or 0) > 0)]
     # Filter in Python for fields that may not be indexed / stored on the record
     def keep(p: Dict[str, Any]) -> bool:
         if min_rating is not None and (p.get("rating") or 0) < min_rating:
@@ -2341,9 +2344,9 @@ async def seed_data():
         ]
         # Rich provider gallery + review templates for the directory browse UI
         _stock_gallery = [
-            "https://images.unsplash.com/photo-1581091012184-5c5c1e64eae2?w=800&q=80",
+            "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80",
             "https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=800&q=80",
-            "https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=800&q=80",
+            "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=80",
             "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80",
             "https://images.unsplash.com/photo-1583847268964-b28dc8f51f92?w=800&q=80",
         ]
