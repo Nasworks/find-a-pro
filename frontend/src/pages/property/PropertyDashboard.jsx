@@ -77,6 +77,19 @@ export default function PropertyDashboard() {
         <StatCard icon={Users} label="Active Tenants" value={properties.reduce((s, p) => s + (p.tenants?.length || 0), 0)} color="text-amber-500" />
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Link to="/post-job" className="bg-card border border-border rounded-2xl p-5 hover:border-primary/40 transition-colors">
+          <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center mb-3"><Wrench className="w-5 h-5" /></div>
+          <div className="font-semibold text-foreground">Post a maintenance job</div>
+          <div className="text-xs text-muted-foreground">Get 3 quotes from verified property-maintenance pros.</div>
+        </Link>
+        <Link to="/find-providers" data-testid="dashboard-find-providers" className="bg-gradient-to-br from-primary/10 via-blue-500/5 to-transparent border border-primary/30 rounded-2xl p-5 hover:border-primary/60 transition-colors">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-blue-600 text-white flex items-center justify-center mb-3"><Users className="w-5 h-5" /></div>
+          <div className="font-semibold text-foreground">Browse providers</div>
+          <div className="text-xs text-muted-foreground">Filter verified pros by trade, price, rating & credentials.</div>
+        </Link>
+      </div>
+
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-foreground">Your Properties</h2>

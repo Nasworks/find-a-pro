@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, MessageSquare, ClipboardList, Camera, Mic, Home as HomeIcon, Building, Sparkles, ArrowRight, Layers, Wrench, Search } from 'lucide-react';
+import { Zap, MessageSquare, ClipboardList, Camera, Mic, Home as HomeIcon, Building, Sparkles, ArrowRight, Layers, Wrench, Search, Users, Pencil } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import ServicePicker from '../../components/ServicePicker';
+import FindProviders from '../shared/FindProviders';
 import api from '../../lib/api';
 
 const RESIDENTIAL_QUICK = [
@@ -68,8 +69,38 @@ export default function ClientHome() {
 
   const quickTags = propertyType === 'commercial' ? COMMERCIAL_QUICK : RESIDENTIAL_QUICK;
 
+  const [tab, setTab] = useState('describe'); // 'describe' | 'browse'
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 p-6 lg:p-10 max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto px-6 pt-6 lg:px-10 lg:pt-8">
+      {/* Top tab switch */}
+      <div className="inline-flex bg-muted p-1 rounded-full mb-6" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          data-testid="home-tab-describe"
+          onClick={() => setTab('describe')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors ${tab === 'describe' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <Pencil className="w-3.5 h-3.5" /> Describe your job
+        </button>
+        <button
+          type="button"
+          role="tab"
+          data-testid="home-tab-browse"
+          onClick={() => setTab('browse')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-colors ${tab === 'browse' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <Users className="w-3.5 h-3.5" /> Browse providers
+        </button>
+      </div>
+
+      {tab === 'browse' ? (
+        <div className="-mx-6 lg:-mx-10">
+          <FindProviders />
+        </div>
+      ) : (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8">
       <div className="space-y-8">
         <div>
           <h1 className="text-4xl md:text-5xl font-bold text-foreground tracking-tight">
@@ -214,6 +245,8 @@ export default function ClientHome() {
         value={picked ? { category_id: picked.category_id, subcategory_id: picked.subcategory_id } : undefined}
         onSelect={(sel) => setPicked(sel)}
       />
+    </div>
+      )}
     </div>
   );
 }

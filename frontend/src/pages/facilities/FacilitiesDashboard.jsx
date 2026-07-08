@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, ShieldCheck, Wrench, AlertCircle, Clock, TrendingUp } from 'lucide-react';
+import { Building2, ShieldCheck, Wrench, AlertCircle, Clock, TrendingUp, Users } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import api from '../../lib/api';
@@ -42,6 +42,19 @@ export default function FacilitiesDashboard() {
         <div className="font-semibold mt-1">3 tickets approaching SLA breach</div>
         <div className="text-sm opacity-90">Industrial Warehouse Zone A has 5 open tickets. Preventive maintenance recommended.</div>
         <Button variant="secondary" className="mt-4 bg-white/20 hover:bg-white/30 text-white border-0">View SLA queue</Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Link to="/post-job" className="bg-card border border-border rounded-2xl p-5 hover:border-primary/40 transition-colors">
+          <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center mb-3"><Wrench className="w-5 h-5" /></div>
+          <div className="font-semibold text-foreground">Log a ticket</div>
+          <div className="text-xs text-muted-foreground">Report an issue on any of your sites — routes to preferred providers first.</div>
+        </Link>
+        <Link to="/find-providers" data-testid="dashboard-find-providers" className="bg-gradient-to-br from-primary/10 via-blue-500/5 to-transparent border border-primary/30 rounded-2xl p-5 hover:border-primary/60 transition-colors">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-blue-600 text-white flex items-center justify-center mb-3"><Users className="w-5 h-5" /></div>
+          <div className="font-semibold text-foreground">Browse providers</div>
+          <div className="text-xs text-muted-foreground">Filter verified commercial pros by trade, price, rating & credentials.</div>
+        </Link>
       </div>
 
       <div>
