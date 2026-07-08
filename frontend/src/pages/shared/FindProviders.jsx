@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, Star, Shield, ShieldCheck, Award, Loader2, X, MapPin, Sparkles, Users } from 'lucide-react';
+import { Search, Star, Shield, ShieldCheck, Award, Loader2, X, MapPin, Sparkles, Users, Heart } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
@@ -174,7 +174,14 @@ export default function FindProviders() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {results.map((p) => <ProviderCard key={p.user_id} p={p} onClick={() => navigate(`/providers/${p.user_id}`)} />)}
+              {results.map((p) => (
+                <ProviderCard
+                  key={p.user_id}
+                  p={p}
+                  onClick={() => navigate(`/providers/${p.user_id}`)}
+                  onToggleSave={(next) => setResults((rs) => rs.map((r) => r.user_id === p.user_id ? { ...r, is_saved: next } : r))}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -280,16 +287,50 @@ function ToggleRow({ icon: Icon, label, sub, checked, onChange, testId }) {
 
 const AVATAR_COLORS = ['bg-emerald-500', 'bg-blue-500', 'bg-violet-500', 'bg-amber-500', 'bg-rose-500', 'bg-teal-500', 'bg-orange-500'];
 
-function ProviderCard({ p, onClick }) {
+function ProviderCard({ p, onClick, onToggleSave }) {
   const initials = (p.business_name || 'P').split(' ').slice(0, 2).map((s) => s[0]).join('').toUpperCase();
   const avatarColor = AVATAR_COLORS[(p.user_id || '').charCodeAt(0) % AVATAR_COLORS.length];
+  const [busy, setBusy] = useState(false);
+  const toggleSave = async (e) => {
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    const next = !p.is_saved;
+    onToggleSave?.(next);
+    try {
+      if (next) {
+        await api.post(`/saved-providers/${p.user_id}`);
+        toast.success(`Saved ${p.business_name}`);
+      } else {
+        await api.delete(`/saved-providers/${p.user_id}`);
+        toast.success('Removed from Saved Pros');
+      }
+    } catch {
+      onToggleSave?.(!next);
+      toast.error('Could not update Saved Pros');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <button
+    <div
       data-testid={`provider-card-${p.user_id}`}
       onClick={onClick}
-      className="text-left bg-card border border-border rounded-2xl p-4 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5 transition-all group"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
+      className="relative text-left bg-card border border-border rounded-2xl p-4 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5 transition-all group cursor-pointer"
     >
-      <div className="flex items-start gap-3">
+      <button
+        data-testid={`save-toggle-${p.user_id}`}
+        onClick={toggleSave}
+        aria-pressed={!!p.is_saved}
+        aria-label={p.is_saved ? 'Remove from Saved Pros' : 'Add to Saved Pros'}
+        className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${p.is_saved ? 'bg-rose-500/15 text-rose-500 hover:bg-rose-500/25' : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+      >
+        <Heart className={`w-4 h-4 ${p.is_saved ? 'fill-rose-500' : ''}`} />
+      </button>
+      <div className="flex items-start gap-3 pr-8">
         <div className={`w-12 h-12 rounded-full ${avatarColor} text-white font-bold flex items-center justify-center relative shrink-0`}>
           {initials}
           {p.verified && (
@@ -319,6 +360,6 @@ function ProviderCard({ p, onClick }) {
         <span className="inline-flex items-center gap-1 text-muted-foreground"><MapPin className="w-3 h-3" /> Auckland</span>
         <span className="font-bold text-foreground">${p.hourly_rate?.toFixed?.(0)}/hr</span>
       </div>
-    </button>
+    </div>
   );
 }

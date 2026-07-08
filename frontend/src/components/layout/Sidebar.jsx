@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, HardHat, Radio, History, Share2, Crown, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound } from 'lucide-react';
+import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, HardHat, Radio, History, Share2, Crown, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Heart } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Logo from '../Logo';
 import { User as UserIcon, Wrench as WrenchIcon, Building2 as B2, Shield as ShieldIcon } from 'lucide-react';
@@ -18,6 +18,7 @@ const clientNav = [
   ]},
   { section: 'Explore', items: [
     { to: '/find-providers', label: 'Find Providers', icon: Users },
+    { to: '/saved-providers', label: 'Saved Pros', icon: Heart },
     { to: '/live-map', label: 'Live Map', icon: Map },
     { to: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
     { to: '/news-feed', label: 'News Feed', icon: Newspaper },
@@ -70,6 +71,7 @@ const propertyNav = [
   { section: 'Actions', items: [
     { to: '/post-job', label: 'Post a Job', icon: Plus, highlight: true },
     { to: '/find-providers', label: 'Find Providers', icon: Users },
+    { to: '/saved-providers', label: 'Saved Pros', icon: Heart },
     { to: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/more', label: 'More', icon: MoreHorizontal },
@@ -89,6 +91,7 @@ const landlordNav = [
   { section: 'Actions', items: [
     { to: '/post-job', label: 'Request Maintenance', icon: Plus, highlight: true },
     { to: '/find-providers', label: 'Find Providers', icon: Users },
+    { to: '/saved-providers', label: 'Saved Pros', icon: Heart },
     { to: '/cost-estimator', label: 'Cost Estimator', icon: DollarSign },
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/more', label: 'More', icon: MoreHorizontal },
@@ -108,6 +111,7 @@ const facilitiesNav = [
   { section: 'Actions', items: [
     { to: '/post-job', label: 'Log Ticket', icon: Plus, highlight: true },
     { to: '/find-providers', label: 'Find Providers', icon: Users },
+    { to: '/saved-providers', label: 'Saved Pros', icon: Heart },
     { to: '/cost-estimator', label: 'Cost Estimator', icon: DollarSign },
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/more', label: 'More', icon: MoreHorizontal },

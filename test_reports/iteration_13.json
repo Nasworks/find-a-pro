@@ -1,0 +1,22 @@
+{
+  "summary": "Full end-to-end validation of the 'Saved Pros' feature (backend + frontend) plus rebrand smoke. 13/13 pytest backend cases PASS covering all 3 CRUD endpoints, idempotency, ordering, is_saved on both /providers/search and /providers/{id}, 404 (non-existent) and 400 (self-save) edge cases, and 401 unauth. Frontend Playwright walkthrough as a customer PASS: heart toggle on /find-providers persists across reload (aria-pressed true + rose class), Save Pro <-> Saved label toggles on /providers/:id and persists, /saved-providers page renders the saved-provider-card with correct count and unsave button, and empty state with browse button renders after last unsave. Sidebar visibility across all 5 roles matched spec: customer (Explore) / landlord / property / facilities show 'Saved Pros'; provider and insurance do NOT. No 'Dispatchr' text visible in user-facing UI; 'Pro Finder NZ' brand rendered. No backend or frontend issues found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_saved_providers.py",
+    "/app/test_reports/pytest/saved_providers.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py list_saved_providers issues 2 sequential Mongo queries (profiles + users) plus a saved_at map — fine for the 200-item cap, but if the cap grows consider a single aggregation pipeline to avoid N+1 growth.",
+    "server.py provider_profile always fires an extra find_one on saved_providers even for providers viewing their own or other roles that will never see the Save Pro button — micro-optimisation only.",
+    "FindProviders ProviderCard: heart button sits inside a clickable card wrapper — code correctly uses stopPropagation on click, but note there is no aria-label update to reflect the optimistic state until server round-trip completes (currently uses p.is_saved which is updated optimistically, so this is actually fine — noted as verified)."
+  ],
+  "updated_files": ["/app/backend/tests/test_saved_providers.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (all 4 pages + 5-role sidebar matrix)"},
+  "test_credentials": "Ephemeral: qa-saved-{role}-{ts}@dispatchr.demo / testpass123, roles: customer, provider, insurance, landlord, property, facilities",
+  "seed_data_creation": "None beyond ephemeral registrations.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Saved Pros feature is ship-ready. Backend endpoints: GET/POST/DELETE /api/saved-providers[/id], idempotent, 404/400/401 semantics correct, is_saved surfaced on both /providers/search and /providers/{id}. Frontend testids stable: save-toggle-{id}, provider-save-btn, saved-providers-page, saved-providers-count, saved-provider-card-{id}, unsave-provider-{id}, saved-providers-empty, saved-providers-browse-btn. Sidebar: customer (Explore), landlord/property/facilities (Actions). Provider + Insurance intentionally excluded."
+}

@@ -1176,10 +1176,15 @@ async def search_providers(
         ids = [p["user_id"] for p in profiles]
         users = await db.users.find({"user_id": {"$in": ids}}, {"_id": 0, "password_hash": 0}).to_list(None)
         umap = {u["user_id"]: u for u in users}
+        saved = await db.saved_providers.find(
+            {"user_id": user["user_id"], "provider_id": {"$in": ids}}, {"_id": 0, "provider_id": 1}
+        ).to_list(len(ids))
+        saved_set = {s["provider_id"] for s in saved}
         for p in profiles:
             u = umap.get(p["user_id"]) or {}
             p["picture"] = u.get("picture")
             p["rate_bucket"] = _rate_bucket(p.get("hourly_rate", 85))
+            p["is_saved"] = p["user_id"] in saved_set
     return {"count": len(profiles), "results": profiles}
 
 
@@ -1218,7 +1223,61 @@ async def provider_profile(provider_id: str, user=Depends(require_user)):
     p["past_jobs"] = bids
     reviews = await db.provider_reviews.find({"provider_id": provider_id}, {"_id": 0}).sort("created_at", -1).to_list(30)
     p["reviews"] = reviews
+    p["is_saved"] = bool(await db.saved_providers.find_one({"user_id": user["user_id"], "provider_id": provider_id}))
     return p
+
+
+# ---------------- SAVED PROVIDERS ("My Saved Pros") ----------------
+@api.get("/saved-providers")
+async def list_saved_providers(user=Depends(require_user)):
+    """Return the current user's saved (bookmarked) provider profiles as full cards."""
+    saved = await db.saved_providers.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("saved_at", -1).to_list(200)
+    if not saved:
+        return {"count": 0, "results": []}
+    ids = [s["provider_id"] for s in saved]
+    profiles = await db.provider_profiles.find({"user_id": {"$in": ids}}, {"_id": 0}).to_list(len(ids))
+    users = await db.users.find({"user_id": {"$in": ids}}, {"_id": 0, "password_hash": 0}).to_list(None)
+    umap = {u["user_id"]: u for u in users}
+    pmap: Dict[str, Dict[str, Any]] = {}
+    for p in profiles:
+        u = umap.get(p["user_id"]) or {}
+        p["picture"] = u.get("picture")
+        p["rate_bucket"] = _rate_bucket(p.get("hourly_rate", 85))
+        pmap[p["user_id"]] = p
+    # Preserve insertion order (most recently saved first) and drop any orphan ids.
+    ordered: List[Dict[str, Any]] = []
+    saved_at_map = {s["provider_id"]: s.get("saved_at") for s in saved}
+    for s in saved:
+        card = pmap.get(s["provider_id"])
+        if not card:
+            continue
+        card["saved_at"] = saved_at_map.get(s["provider_id"])
+        ordered.append(card)
+    return {"count": len(ordered), "results": ordered}
+
+
+@api.post("/saved-providers/{provider_id}")
+async def save_provider(provider_id: str, user=Depends(require_user)):
+    if provider_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="You cannot save your own profile")
+    exists = await db.provider_profiles.find_one({"user_id": provider_id}, {"_id": 0, "user_id": 1})
+    if not exists:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.saved_providers.update_one(
+        {"user_id": user["user_id"], "provider_id": provider_id},
+        {"$setOnInsert": {"user_id": user["user_id"], "provider_id": provider_id, "saved_at": now}},
+        upsert=True,
+    )
+    return {"saved": True, "provider_id": provider_id}
+
+
+@api.delete("/saved-providers/{provider_id}")
+async def unsave_provider(provider_id: str, user=Depends(require_user)):
+    res = await db.saved_providers.delete_one({"user_id": user["user_id"], "provider_id": provider_id})
+    return {"saved": False, "removed": res.deleted_count, "provider_id": provider_id}
 
 
 # ---------------- DASHBOARD STATS ----------------

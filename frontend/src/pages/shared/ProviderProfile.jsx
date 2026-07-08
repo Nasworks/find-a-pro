@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, MapPin, Shield, ShieldCheck, Award, Clock, Briefcase, MessageSquare, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Star, MapPin, Shield, ShieldCheck, Award, Clock, Briefcase, MessageSquare, Loader2, CheckCircle2, Sparkles, Heart } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import api from '../../lib/api';
@@ -13,6 +13,7 @@ export default function ProviderProfile() {
   const navigate = useNavigate();
   const [p, setP] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -34,6 +35,27 @@ export default function ProviderProfile() {
       toast.success('Message sent');
       navigate('/messages');
     } catch { toast.error('Failed to send'); }
+  };
+
+  const toggleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    const nextSaved = !p.is_saved;
+    setP((cur) => ({ ...cur, is_saved: nextSaved }));
+    try {
+      if (nextSaved) {
+        await api.post(`/saved-providers/${p.user_id}`);
+        toast.success(`Saved ${p.business_name}`);
+      } else {
+        await api.delete(`/saved-providers/${p.user_id}`);
+        toast.success('Removed from Saved Pros');
+      }
+    } catch {
+      setP((cur) => ({ ...cur, is_saved: !nextSaved }));
+      toast.error('Could not update Saved Pros');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -76,6 +98,17 @@ export default function ProviderProfile() {
           <div className="text-3xl font-bold text-foreground">${p.hourly_rate?.toFixed?.(0)}<span className="text-sm text-muted-foreground font-medium">/hr</span></div>
           <Button data-testid="provider-message-btn" onClick={startChat} className="w-full md:w-auto"><MessageSquare className="w-4 h-4 mr-1.5" /> Message</Button>
           <Button data-testid="provider-invite-btn" variant="outline" onClick={() => navigate('/post-job', { state: { assignedProviderName: p.business_name } })} className="w-full md:w-auto"><Sparkles className="w-4 h-4 mr-1.5" /> Invite to job</Button>
+          <Button
+            data-testid="provider-save-btn"
+            variant="outline"
+            onClick={toggleSave}
+            disabled={saving}
+            aria-pressed={!!p.is_saved}
+            className={`w-full md:w-auto ${p.is_saved ? 'text-rose-500 border-rose-500/40 hover:bg-rose-500/10' : ''}`}
+          >
+            <Heart className={`w-4 h-4 mr-1.5 ${p.is_saved ? 'fill-rose-500' : ''}`} />
+            {p.is_saved ? 'Saved' : 'Save Pro'}
+          </Button>
         </div>
       </div>
 
