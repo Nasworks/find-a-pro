@@ -1722,13 +1722,29 @@ async def my_tenancies(user=Depends(require_user)):
     else:
         cursor = db.tenancies.find({"tenant_id": user["user_id"]})
     items = await cursor.sort("created_at", -1).to_list(200)
-    # Enrich with the counterparty name for UI
+    if not items:
+        return []
+    # Batch-fetch counterparties to avoid N+1 (previously 1 query per tenancy).
+    user_ids = set()
+    for t in items:
+        if t.get("tenant_id"):
+            user_ids.add(t["tenant_id"])
+        if t.get("approver_id"):
+            user_ids.add(t["approver_id"])
+    umap: Dict[str, Dict[str, Any]] = {}
+    if user_ids:
+        users_list = await db.users.find(
+            {"user_id": {"$in": list(user_ids)}},
+            {"_id": 0, "user_id": 1, "name": 1, "email": 1, "role": 1},
+        ).to_list(len(user_ids))
+        umap = {u["user_id"]: u for u in users_list}
     out = []
     for t in items:
-        tenant = await db.users.find_one({"user_id": t.get("tenant_id")}, {"_id": 0, "user_id": 1, "name": 1, "email": 1})
-        approver = None
-        if t.get("approver_id"):
-            approver = await db.users.find_one({"user_id": t["approver_id"]}, {"_id": 0, "user_id": 1, "name": 1, "email": 1, "role": 1})
+        tenant_full = umap.get(t.get("tenant_id"))
+        tenant = None
+        if tenant_full:
+            tenant = {k: tenant_full[k] for k in ("user_id", "name", "email") if k in tenant_full}
+        approver = umap.get(t.get("approver_id")) if t.get("approver_id") else None
         item = _serialize_tenancy(t)
         item["tenant"] = tenant
         item["approver"] = approver

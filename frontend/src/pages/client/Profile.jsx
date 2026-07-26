@@ -60,7 +60,7 @@ export default function Profile() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-          {isProvider ? [
+          {(isProvider ? [
             { l: 'Earnings', v: stats ? `$${Math.round(stats.earnings)}` : '$0' },
             { l: 'Jobs Done', v: stats?.jobs_done || 0 },
             { l: 'Active', v: stats?.active_jobs || 0 },
@@ -70,7 +70,7 @@ export default function Profile() {
             { l: 'Active', v: stats?.active_jobs || 0 },
             { l: 'Completed', v: stats?.jobs_done || 0 },
             { l: 'Unpaid', v: stats?.unpaid || 0 },
-          ].map((s) => (
+          ]).map((s) => (
             <div key={s.l} className="bg-white/10 backdrop-blur rounded-xl p-3">
               <div className="text-2xl font-bold">{s.v}</div>
               <div className="text-xs opacity-80">{s.l}</div>

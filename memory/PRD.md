@@ -23,6 +23,12 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 7. Live Map, News Feed, Cost Estimator, Community Forum, Legal & Privacy, Guide & Help, Report Provider, Disputes, More menu
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
+## What's Implemented (2026-02-08 — Investor-ready polish pass)
+- ✅ **Zero-login role picker on landing** (`/app/frontend/src/pages/LandingRoleSelect.jsx`) — visitors pick a role card and are auto-signed in via `demoLogin(role)` behind the scenes; no signup, no password. Copy updated to "Live preview · No signup required" and "Enter the preview as…". The "Log in" link is retained for repeat users.
+- ✅ **Fixed Provider `/profile` React crash** (iteration_14 P0) — JSX ternary in `pages/client/Profile.jsx` L62-79 now wraps the array before `.map()`. All 4 stat tiles render for both customer and provider roles.
+- ✅ **Fixed N+1 query in `/api/tenancies/mine`** (deployment_agent P0) — batch-fetch tenant+approver users in a single Mongo `$in` query instead of 2 queries per tenancy.
+- ✅ **Fixed `.gitignore` deploy blocker** — removed `.env`, `.env.*`, `*.env` entries so `.env` files are committed and picked up by the deployment pipeline.
+
 ## What's Implemented (2026-02-08)
 - ✅ **One-click Demo Login (2026-02-08)** — six seeded demo accounts (one per role) with a "Try the app instantly" panel on `/login`. Backend `POST /api/auth/demo-login` `{role}` returns the seeded account and sets the auth cookie. Accounts persist so users can save data between demo sessions. Full credentials in `/app/memory/test_credentials.md`.
 - ✅ **Saved Pros / Favorite Providers (2026-02-08 P1)** — Customers, landlords, property managers and facilities users can bookmark providers and access them from a dedicated `/saved-providers` page.

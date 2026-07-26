@@ -1,27 +1,49 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Wrench, Building2, Shield, KeyRound, Landmark, ArrowRight, ChevronDown } from 'lucide-react';
+import { User, Wrench, Building2, Shield, KeyRound, Landmark, ArrowRight, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 import ViewModeToggle from '../components/ViewModeToggle';
 import Logo from '../components/Logo';
+import { extractError } from '../lib/errors';
 
 const roles = [
-  { id: 'customer', title: 'Customer', desc: 'I need a service for my home or business', icon: User, color: 'from-blue-500 to-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/40', iconBg: 'bg-blue-500' },
-  { id: 'provider', title: 'Service Provider', desc: 'I offer trade services to clients', icon: Wrench, color: 'from-emerald-500 to-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/40', iconBg: 'bg-emerald-500' },
-  { id: 'property', title: 'Property Manager', desc: 'Manage multiple properties and maintenance', icon: Building2, color: 'from-violet-500 to-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/40', iconBg: 'bg-violet-500' },
-  { id: 'landlord', title: 'Landlord', desc: 'Maintain rental properties and track spend', icon: KeyRound, color: 'from-orange-500 to-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/40', iconBg: 'bg-orange-500' },
-  { id: 'facilities', title: 'Facilities Management', desc: 'Commercial sites, SLAs and preventive maintenance', icon: Landmark, color: 'from-slate-600 to-slate-700', bg: 'bg-slate-50 dark:bg-slate-950/40', iconBg: 'bg-slate-600' },
-  { id: 'insurance', title: 'Insurance Partner', desc: 'Access shared property histories & docs', icon: Shield, color: 'from-teal-500 to-teal-600', bg: 'bg-teal-50 dark:bg-teal-950/40', iconBg: 'bg-teal-500' },
+  { id: 'customer', title: 'Customer', desc: 'I need a service for my home or business', icon: User, iconBg: 'bg-blue-500' },
+  { id: 'provider', title: 'Service Provider', desc: 'I offer trade services to clients', icon: Wrench, iconBg: 'bg-emerald-500' },
+  { id: 'property', title: 'Property Manager', desc: 'Manage multiple properties and maintenance', icon: Building2, iconBg: 'bg-violet-500' },
+  { id: 'landlord', title: 'Landlord', desc: 'Maintain rental properties and track spend', icon: KeyRound, iconBg: 'bg-orange-500' },
+  { id: 'facilities', title: 'Facilities Management', desc: 'Commercial sites, SLAs and preventive maintenance', icon: Landmark, iconBg: 'bg-slate-600' },
+  { id: 'insurance', title: 'Insurance Partner', desc: 'Access shared property histories & docs', icon: Shield, iconBg: 'bg-teal-500' },
 ];
+
+const ROLE_TO_PATH = {
+  provider: '/provider/dashboard',
+  property: '/property/dashboard',
+  landlord: '/landlord/dashboard',
+  facilities: '/facilities/dashboard',
+  insurance: '/insurance/dashboard',
+  customer: '/client-home',
+};
 
 export default function LandingRoleSelect() {
   const navigate = useNavigate();
   const { theme, toggle } = useTheme();
+  const { demoLogin } = useAuth();
+  const [busy, setBusy] = useState(null);
 
-  const handleRole = (roleId) => {
-    localStorage.setItem('dispatchr_selected_role', roleId);
-    navigate('/signup');
+  const enterAs = async (roleId) => {
+    if (busy) return;
+    setBusy(roleId);
+    try {
+      const u = await demoLogin(roleId);
+      toast.success(`Welcome, ${u.name}!`);
+      navigate(ROLE_TO_PATH[u.role] || '/client-home');
+    } catch (err) {
+      toast.error(extractError(err, 'Could not enter demo'));
+      setBusy(null);
+    }
   };
 
   return (
@@ -34,15 +56,15 @@ export default function LandingRoleSelect() {
             {theme === 'dark' ? 'Light mode' : 'Dark mode'}
           </button>
           <Link to="/login">
-            <Button variant="outline">Log in</Button>
+            <Button variant="outline" data-testid="landing-login-btn">Log in</Button>
           </Link>
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto px-6 pt-12 pb-24 text-center">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium mb-6">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary pulse-dot" />
-          Trusted by 12,000+ homes across NZ
+          <Sparkles className="w-3.5 h-3.5" />
+          Live preview · No signup required
         </div>
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.05]">
           Your home, business, or property,
@@ -51,22 +73,24 @@ export default function LandingRoleSelect() {
           </span>
         </h1>
         <p className="mt-6 text-lg text-muted-foreground max-w-xl mx-auto">
-          Describe what you need — we&apos;ll instantly match you with a verified, top-rated local professional.
+          Pick an account type to explore Pro Finder NZ instantly — no email, no password.
         </p>
 
         <div className="mt-12 text-left space-y-3 max-w-xl mx-auto">
-          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Choose your account type</p>
+          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Enter the preview as…</p>
           {roles.map((r) => {
             const Icon = r.icon;
+            const isBusy = busy === r.id;
             return (
               <button
                 key={r.id}
                 data-testid={`role-select-${r.id}`}
-                onClick={() => handleRole(r.id)}
-                className="w-full group flex items-center gap-4 p-4 rounded-2xl border border-border bg-card hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 transition-all text-left"
+                onClick={() => enterAs(r.id)}
+                disabled={!!busy}
+                className="w-full group flex items-center gap-4 p-4 rounded-2xl border border-border bg-card hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5 transition-all text-left disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <div className={`w-12 h-12 rounded-xl ${r.iconBg} flex items-center justify-center text-white shrink-0`}>
-                  <Icon className="w-6 h-6" />
+                  {isBusy ? <Loader2 className="w-6 h-6 animate-spin" /> : <Icon className="w-6 h-6" />}
                 </div>
                 <div className="flex-1">
                   <div className="font-semibold text-foreground">{r.title}</div>
@@ -79,8 +103,8 @@ export default function LandingRoleSelect() {
         </div>
 
         <p className="mt-8 text-sm text-muted-foreground">
-          Already a member?{' '}
-          <Link to="/login" className="text-primary font-medium hover:underline">Log in</Link>
+          Prefer to log in?{' '}
+          <Link to="/login" className="text-primary font-medium hover:underline">Use email or Google</Link>
         </p>
       </div>
 
@@ -102,3 +126,4 @@ export default function LandingRoleSelect() {
     </div>
   );
 }
+
