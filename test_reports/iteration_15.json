@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 15: tested the provider section removals (sidebar, routes, mobile nav, More drawer, /more page) and the Timesheet module end to end: start/stop timer with GPS, manual entry with km and fuel, delete, the jobs dropdown, and the invoice API and UI on the Timesheet page and on the customer JobDetail page. Every requested feature works. Backend: 15/18 pytest passed. The 3 failures are input-validation gaps plus demo account role drift. None of them are in the requested flows.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/demo-login", "issue": "demo-login does not reset the user's role. PATCH /api/auth/role ('Switch Account Type') writes to the shared demo account permanently. Observed: demo-customer returned role=provider (later reverted by someone else) and demo-property returned role=customer. Testers and reviewers then land in the wrong role.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/timesheets/entries", "issue": "Accepts ended_at < started_at and returns 200, creating a negative or zero entry. Only the frontend checks this."},
+      {"endpoint": "POST /api/timesheets/entries", "issue": "A non-numeric fuel_km or fuel_cost (e.g. 'abc') causes a 500 (unhandled float() ValueError). It should return 400/422."},
+      {"endpoint": "GET /api/jobs/{job_id}/invoice", "issue": "When a job has no accepted bid or booking, provider_id falls back to the calling provider. Any provider can then GET an invoice (title, status) for any open job. Exposure is low because only their own entries are included, but they should get a 403 unless they are linked to the job."},
+      {"endpoint": "POST /api/timesheets/stop/{id}", "issue": "No role check (the ownership check makes this safe). Stopping an entry that was already stopped returns ok silently. Fine, noted only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Timesheet EntryRow delete button", "issue": "The trash icon is opacity-0 until hover, so it cannot be found or used on touch devices.", "selector": "[data-testid^='remove-entry-']", "priority": "MEDIUM"},
+      {"component": "Timesheet EntriesList", "issue": "A running (active) entry also shows in the entries list as '11:46 AM – —, 0 min $0.00', duplicating the active timer strip.", "selector": "[data-testid^='entry-row-']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Timesheet in simulated Mobile view (view-mode-toggle)", "issues": ["The page uses viewport breakpoints (md:grid-cols-4, lg:grid-cols-3), so inside the phone frame on desktop it keeps the desktop grid. Stat tiles are cramped ('$281.7' clipped), 'Start a timer' wraps one word per line, and the Work/Travel/Mats buttons overlap.", "The More 'Quick access' drawer opens at the bottom-left of the browser window, outside the phone frame."]},
+      {"screen": "Real 390px viewport", "issues": ["The desktop sidebar stays expanded (~256px) and the page overflows horizontally (scrollWidth 456 > 390). This is likely app-wide, not only Timesheet."]},
+      {"screen": "Timesheet stat tiles", "issues": ["The Fuel tile shows '$32.5' (not 2 decimals). The Today sub-value rounds to '$181' while the day header shows '$180.75'."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_timesheet_invoice.py", "/app/test_reports/pytest/pytest_iter15.xml"],
+  "action_items": [
+    "Make demo-login reset the role: in /auth/demo-login, $set role to the requested role (and ensure provider_profile exists). Alternatively, block PATCH /auth/role for is_demo users.",
+    "Validate the POST /api/timesheets/entries payload: ended_at > started_at → 400, and non-numeric fuel_km/fuel_cost → 400 (wrap float() in try/except or use a Pydantic model).",
+    "Invoice endpoint: return 403 for a provider when the job has no accepted bid or booking linked to that provider.",
+    "Make the entry delete button visible on touch (always visible on mobile, or move it into a menu).",
+    "Make the Timesheet layout responsive inside the simulated mobile frame (container-based layout or an isMobile flag), and render the More drawer inside the phone frame."
+  ],
+  "critical_code_review_comments": [
+    "Timesheet.jsx is 776 lines, over the 700-line guideline. Split into ActiveTimers, QuickStartPanel, GeofencePanel, EntriesList and AddEntryDialog files.",
+    "ActiveTimers computes an unused 'elapsed' variable (void elapsed). This is dead code.",
+    "server.py timesheets endpoints take a raw Dict payload with no Pydantic models, so type validation is missing (the source of the 500 above).",
+    "The AddEntryDialog Worker/Job selects have no data-testid."
+  ],
+  "updated_files": ["/app/backend/tests/test_timesheet_invoice.py"],
+  "success_rate": {"backend": "83% (15/18). All requested flows pass; the failures are validation gaps and demo role drift", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Created TEST_ jobs, bids and time entries and deleted them by id, except job_cb70653729 ('TEST_TS job 1794051848', owned by a registered TEST_ customer whose session was lost). It can be removed manually. The pytest fixture now deletes its job on teardown. I did not modify the demo accounts' roles.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use registered TEST_ customers rather than demo-customer, because the demo account roles drift. Verified OK: provider sidebar removals, all 7 removed routes redirect to /provider/dashboard, customer can access /news-feed and /community-forum, mobile bottom nav has the Time tab, the drawer and /more hide forum/news, the dashboard Timesheet quick action, the timer start/stop, add travel entry with km and fuel, delete (window.confirm), location links with google maps hrefs, the invoice math (quote + labour hours*rate + fuel, GST 15%; excludes non-billable and running entries), 403 for insurance, 404 for a missing job, and job-invoice on customer JobDetail.",
+  "rca of the issue": "Demo role drift: /auth/demo-login only issues a JWT for the existing user doc, and PATCH /auth/role persists the role on the shared demo user. Any 'Switch Account Type' click by one session changes the role for every later demo-login of that role. Fix: set role on demo-login."
+}

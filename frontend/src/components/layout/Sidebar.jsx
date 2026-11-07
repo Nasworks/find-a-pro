@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, History, Share2, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Heart, Clock } from 'lucide-react';
+import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, History, Share2, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Heart, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Logo from '../Logo';
 import { User as UserIcon, Wrench as WrenchIcon, Building2 as B2, Shield as ShieldIcon } from 'lucide-react';
@@ -20,9 +20,6 @@ const clientNav = [
     { to: '/find-providers', label: 'Find Providers', icon: Users },
     { to: '/saved-providers', label: 'Saved Pros', icon: Heart },
     { to: '/live-map', label: 'Live Map', icon: Map },
-    { to: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
-    { to: '/news-feed', label: 'News Feed', icon: Newspaper },
-    { to: '/community-forum', label: 'Forum', icon: Users },
   ]},
   { section: 'Actions', items: [
     { to: '/post-job', label: 'Post a Job', icon: Plus, highlight: true },
@@ -66,7 +63,6 @@ const propertyNav = [
     { to: '/post-job', label: 'Post a Job', icon: Plus, highlight: true },
     { to: '/find-providers', label: 'Find Providers', icon: Users },
     { to: '/saved-providers', label: 'Saved Pros', icon: Heart },
-    { to: '/marketplace', label: 'Marketplace', icon: ShoppingBag },
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/more', label: 'More', icon: MoreHorizontal },
   ]},

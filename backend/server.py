@@ -482,6 +482,9 @@ async def demo_login(request: Request, response: Response):
         user = await db.users.find_one({"email": DEMO_EMAIL[role]})
     if not user:
         raise HTTPException(status_code=500, detail="Failed to provision demo account")
+    if user.get("role") != role:
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": role}})
+        user["role"] = role
     token = create_jwt(user["user_id"])
     set_auth_cookie(response, token)
     user.pop("_id", None)
@@ -1711,6 +1714,13 @@ async def timesheets_create(payload: Dict[str, Any], user=Depends(require_user))
         raise HTTPException(status_code=400, detail=f"type must be one of {sorted(TIME_ENTRY_TYPES)}")
     if not payload.get("started_at") or not payload.get("ended_at"):
         raise HTTPException(status_code=400, detail="started_at and ended_at are required")
+    try:
+        if datetime.fromisoformat(str(payload["ended_at"]).replace("Z", "+00:00")) <= datetime.fromisoformat(str(payload["started_at"]).replace("Z", "+00:00")):
+            raise HTTPException(status_code=400, detail="ended_at must be after started_at")
+        fuel_km = float(payload["fuel_km"]) if payload.get("fuel_km") not in (None, "") else None
+        fuel_cost = float(payload["fuel_cost"]) if payload.get("fuel_cost") not in (None, "") else None
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid date or number")
     worker = await _resolve_worker(user["user_id"], payload.get("worker_id"), user)
     job_snap = await _job_snapshot(payload.get("job_id"), user["user_id"])
     now = datetime.now(timezone.utc).isoformat()
@@ -1728,8 +1738,8 @@ async def timesheets_create(payload: Dict[str, Any], user=Depends(require_user))
         "ended_lat": payload.get("end_lat"),
         "ended_lng": payload.get("end_lng"),
         "notes": (payload.get("notes") or "").strip() or None,
-        "fuel_km": float(payload["fuel_km"]) if payload.get("fuel_km") not in (None, "") else None,
-        "fuel_cost": float(payload["fuel_cost"]) if payload.get("fuel_cost") not in (None, "") else None,
+        "fuel_km": fuel_km,
+        "fuel_cost": fuel_cost,
         "hourly_rate_snapshot": float(payload.get("hourly_rate") or worker["hourly_rate"]),
         "billable": bool(payload.get("billable", True)),
         "created_at": now,
@@ -1848,9 +1858,7 @@ async def job_invoice(job_id: str, user=Depends(require_user)):
     if not provider_id:
         booking = await db.bookings.find_one({"job_id": job_id}, {"_id": 0})
         provider_id = (booking or {}).get("provider_id")
-    if not provider_id and user["role"] == "provider":
-        provider_id = user["user_id"]
-    allowed = {job.get("client_id"), job.get("approver_id"), provider_id}
+    allowed = {job.get("client_id"), job.get("approver_id"), provider_id} - {None}
     if user["user_id"] not in allowed:
         raise HTTPException(status_code=403, detail="Not allowed")
     entries = await db.time_entries.find(

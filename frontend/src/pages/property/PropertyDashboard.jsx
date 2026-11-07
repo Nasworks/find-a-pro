@@ -93,7 +93,6 @@ export default function PropertyDashboard() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-foreground">Your Properties</h2>
-          <Link to="/marketplace" className="text-sm text-primary hover:underline">Order supplies →</Link>
         </div>
         {properties.length === 0 ? (
           <div className="bg-card border border-dashed border-border rounded-2xl p-12 text-center">

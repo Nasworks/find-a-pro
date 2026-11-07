@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, MessageSquare, ShoppingBag, User, LayoutDashboard, ClipboardList, DollarSign, Wrench, KeyRound, Building2, Shield, Plus, MoreHorizontal, Clock } from 'lucide-react';
+import { Home, Briefcase, MessageSquare, User, LayoutDashboard, ClipboardList, DollarSign, Wrench, KeyRound, Building2, Shield, Plus, MoreHorizontal, Clock, CalendarCheck } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../ui/sheet';
 import { useAuth } from '../../context/AuthContext';
-
-const PROVIDER_HIDDEN = ['/news-feed', '/community-forum'];
 
 const roleTabs = {
   customer: [
@@ -12,7 +10,7 @@ const roleTabs = {
     { to: '/my-job-posts', label: 'Jobs', icon: Briefcase },
     { to: '/post-job', label: 'Post', icon: Plus, primary: true },
     { to: '/messages', label: 'Chat', icon: MessageSquare },
-    { to: '/marketplace', label: 'Shop', icon: ShoppingBag },
+    { to: '/bookings', label: 'Book', icon: CalendarCheck },
   ],
   provider: [
     { to: '/provider/dashboard', label: 'Home', icon: LayoutDashboard },
@@ -26,7 +24,7 @@ const roleTabs = {
     { to: '/my-job-posts', label: 'Jobs', icon: Wrench },
     { to: '/post-job', label: 'Log', icon: Plus, primary: true },
     { to: '/messages', label: 'Chat', icon: MessageSquare },
-    { to: '/marketplace', label: 'Shop', icon: ShoppingBag },
+    { to: '/bookings', label: 'Book', icon: Briefcase },
   ],
   landlord: [
     { to: '/landlord/dashboard', label: 'Home', icon: KeyRound },
@@ -106,18 +104,15 @@ export default function MobileBottomNav() {
 
 function MoreDrawerContent({ role, onNavigate }) {
   const navigate = useNavigate();
-  const allLinks = [
+  const links = [
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/live-map', label: 'Live Map', icon: Home },
-    { to: '/news-feed', label: 'News Feed', icon: ClipboardList },
-    { to: '/community-forum', label: 'Community Forum', icon: MessageSquare },
     { to: '/cost-estimator', label: 'Cost Estimator', icon: DollarSign },
     { to: '/guide-help', label: 'Guide & Help', icon: Shield },
     { to: '/legal-privacy', label: 'Legal & Privacy', icon: Shield },
     { to: '/my-disputes', label: 'My Disputes', icon: Shield },
     { to: '/more', label: 'All modules', icon: MoreHorizontal },
   ];
-  const links = role === 'provider' ? allLinks.filter((l) => !PROVIDER_HIDDEN.includes(l.to)) : allLinks;
   // Add role-specific quick links
   if (role === 'provider') links.unshift({ to: '/provider/calendar', label: 'Calendar', icon: ClipboardList });
   return (

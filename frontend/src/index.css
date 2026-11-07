@@ -153,6 +153,10 @@ code {
 .mobile-viewport-inner .lg\:grid-cols-\[240px_1fr_260px\] { grid-template-columns: 1fr !important; }
 .mobile-viewport-inner .lg\:grid-cols-\[240px_1fr\] { grid-template-columns: 1fr !important; }
 .mobile-viewport-inner aside.hidden.lg\:block { display: none !important; }
+.mobile-viewport-inner [data-testid="timesheet-page"] .md\:grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+.mobile-viewport-inner [data-testid="timesheet-page"] .lg\:grid-cols-3 { grid-template-columns: minmax(0, 1fr) !important; }
+.mobile-viewport-inner [data-testid="timesheet-page"] .lg\:col-span-2 { grid-column: auto !important; }
+.mobile-viewport-inner [data-testid="active-timers"] > div { flex-wrap: wrap; }
 
 /* Constrain dialogs, sheets, and popovers portalled to body when in mobile view mode.
    Radix portals to document.body, so parent .mobile-viewport-inner CSS cannot reach them. */

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, Link } from 'react-router-dom';
-import { Bell, ShoppingCart, Menu, X } from 'lucide-react';
+import { Bell, Menu, X } from 'lucide-react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MobileBottomNav from './MobileBottomNav';
@@ -9,7 +9,6 @@ import ViewModeToggle from '../ViewModeToggle';
 import { Sheet, SheetContent, SheetTrigger } from '../ui/sheet';
 import { useViewMode } from '../../context/ViewModeContext';
 import { useAuth } from '../../context/AuthContext';
-import { useCart } from '../../context/CartContext';
 
 export default function MainLayout() {
   const { isMobile } = useViewMode();
@@ -51,7 +50,6 @@ function MobileLayout() {
 
 function MobileTopBar() {
   const { user } = useAuth();
-  const { count } = useCart();
   const [sideOpen, setSideOpen] = useState(false);
   const initials = (user?.name || 'U').split(' ').map((s) => s[0]).slice(0, 2).join('').toUpperCase();
 
@@ -77,10 +75,6 @@ function MobileTopBar() {
       </div>
       <div className="flex items-center gap-1">
         <ViewModeToggle className="w-9 h-9" />
-        <Link to="/cart" className="relative w-9 h-9 rounded-lg hover:bg-accent flex items-center justify-center" aria-label="Cart">
-          <ShoppingCart className="w-4 h-4 text-muted-foreground" />
-          {count > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">{count}</span>}
-        </Link>
         <button className="w-9 h-9 rounded-lg hover:bg-accent flex items-center justify-center relative" aria-label="Notifications">
           <Bell className="w-4 h-4 text-muted-foreground" />
           <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-primary" />

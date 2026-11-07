@@ -6,7 +6,6 @@ import { useAuth } from '../../context/AuthContext';
 const items = [
   { to: '/cost-estimator', icon: Calculator, label: 'Cost Estimator', desc: 'Median NZ market rates', color: 'bg-primary' },
   { to: '/guide-help', icon: BookOpen, label: 'Guide & Help', desc: 'FAQ, live chat, phone support', color: 'bg-emerald-500' },
-  { to: '/community-forum', icon: Users, label: 'Community Forum', desc: 'Talk with 12,000+ NZ pros', color: 'bg-violet-500' },
   { to: '/legal-privacy', icon: Scale, label: 'Legal & Privacy', desc: 'ToS, Privacy, Warranty', color: 'bg-slate-500' },
   { to: '/report-provider', icon: Flag, label: 'Report Provider', desc: 'Report abuse or unsafe work', color: 'bg-rose-500' },
   { to: '/my-disputes', icon: Gavel, label: 'My Disputes', desc: 'Track mediation status', color: 'bg-amber-500' },
@@ -16,7 +15,7 @@ const items = [
 
 export default function MoreMenu() {
   const { user } = useAuth();
-  const visible = user?.role === 'provider' ? items.filter((it) => it.to !== '/community-forum') : items;
+  const visible = items;
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-6">

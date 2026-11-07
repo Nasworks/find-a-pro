@@ -275,10 +275,10 @@ export default function Timesheet() {
 
       {/* Totals */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <StatTile label="Today" value={fmtMinutes(todayMinutes)} sub={summary ? `$${Math.round(entries.filter((e) => (e.started_at || '').startsWith(todayISO)).reduce((a, e) => a + (e.cost || 0), 0))}` : null} icon={Clock} />
+        <StatTile label="Today" value={fmtMinutes(todayMinutes)} sub={summary ? `$${entries.filter((e) => (e.started_at || '').startsWith(todayISO)).reduce((a, e) => a + (e.cost || 0), 0).toFixed(2)}` : null} icon={Clock} />
         <StatTile label="Last 7 days" value={fmtMinutes(weekMinutes)} icon={ClipboardList} />
-        <StatTile label="Billable" value={summary ? `$${summary.billable_cost}` : '—'} icon={DollarSign} />
-        <StatTile label="Fuel" value={summary ? `$${summary.fuel_cost}` : '—'} icon={Fuel} />
+        <StatTile label="Billable" value={summary ? `$${summary.billable_cost.toFixed(2)}` : '—'} icon={DollarSign} />
+        <StatTile label="Fuel" value={summary ? `$${summary.fuel_cost.toFixed(2)}` : '—'} icon={Fuel} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -527,7 +527,8 @@ function GeofencePanel({ status, coords, job, jobs, geofenceJobId, setGeofenceJo
 }
 
 // ------- entries list -------
-function EntriesList({ loading, entries, onRemove }) {
+function EntriesList({ loading, entries: all, onRemove }) {
+  const entries = all.filter((e) => !e.is_running);
   if (loading) return <div className="py-16 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>;
   if (entries.length === 0) return (
     <div className="bg-card border border-dashed border-border rounded-2xl p-12 text-center">
@@ -584,7 +585,7 @@ function EntryRow({ e, onRemove }) {
       </div>
       <button
         onClick={() => onRemove(e.entry_id)}
-        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-rose-500 transition-all"
+        className="text-muted-foreground hover:text-rose-500 transition-colors"
         data-testid={`remove-entry-${e.entry_id}`}
         aria-label="Delete entry"
       >

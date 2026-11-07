@@ -18,10 +18,6 @@ import PostJob from './pages/client/PostJob';
 import MyJobPosts from './pages/client/MyJobPosts';
 import Bookings from './pages/client/Bookings';
 import Messages from './pages/client/Messages';
-import Marketplace from './pages/client/Marketplace';
-import ProductDetail from './pages/client/ProductDetail';
-import Cart from './pages/client/Cart';
-import NewsFeed from './pages/client/NewsFeed';
 import Profile from './pages/client/Profile';
 import LiveMap from './pages/client/LiveMap';
 import JobDetail from './pages/client/JobDetail';
@@ -46,8 +42,6 @@ import Verification from './pages/provider/Verification';
 import ProfileContact from './pages/provider/ProfileContact';
 import CostEstimator from './pages/shared/CostEstimator';
 import GuideHelp from './pages/shared/GuideHelp';
-import CommunityForum from './pages/shared/CommunityForum';
-import ForumPostDetail from './pages/shared/ForumPostDetail';
 import Tenancies from './pages/shared/Tenancies';
 import ApprovalQueue from './pages/shared/ApprovalQueue';
 import FindProviders from './pages/shared/FindProviders';
@@ -62,12 +56,6 @@ function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
   if (!user) return <Navigate to="/" replace />;
-  return children;
-}
-
-function NotForProvider({ children }) {
-  const { user } = useAuth();
-  if (user?.role === 'provider') return <Navigate to="/provider/dashboard" replace />;
   return children;
 }
 
@@ -104,10 +92,6 @@ function AppRouter() {
         <Route path="/jobs/:jobId" element={<JobDetail />} />
         <Route path="/bookings" element={<Bookings />} />
         <Route path="/messages" element={<Messages />} />
-        <Route path="/marketplace" element={<Marketplace />} />
-        <Route path="/marketplace/product/:id" element={<ProductDetail />} />
-        <Route path="/cart" element={<Cart />} />
-        <Route path="/news-feed" element={<NotForProvider><NewsFeed /></NotForProvider>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/live-map" element={<LiveMap />} />
 
@@ -144,8 +128,6 @@ function AppRouter() {
         <Route path="/more" element={<MoreMenu />} />
         <Route path="/cost-estimator" element={<CostEstimator />} />
         <Route path="/guide-help" element={<GuideHelp />} />
-        <Route path="/community-forum" element={<NotForProvider><CommunityForum /></NotForProvider>} />
-        <Route path="/community-forum/:postId" element={<NotForProvider><ForumPostDetail /></NotForProvider>} />
         <Route path="/tenancies" element={<Tenancies />} />
         <Route path="/approvals" element={<ApprovalQueue />} />
         <Route path="/find-providers" element={<FindProviders />} />
