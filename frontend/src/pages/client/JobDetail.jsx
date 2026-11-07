@@ -9,6 +9,7 @@ import { Label } from '../../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Checkbox } from '../../components/ui/checkbox';
 import api from '../../lib/api';
+import { JobInvoice } from '../../components/JobInvoice';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -138,6 +139,7 @@ export default function JobDetail() {
                 </div>
               </div>
             )}
+            {job.status !== 'open' && <JobInvoice jobId={job.job_id} hideWhenEmpty />}
           </div>
           <aside className="space-y-4">
             {!isOwner && user?.role === 'provider' && job.status === 'open' && !myBid && (

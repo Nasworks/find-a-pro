@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Briefcase, MessageSquare, ShoppingBag, User, LayoutDashboard, ClipboardList, DollarSign, Wrench, KeyRound, Building2, Shield, Plus, MoreHorizontal } from 'lucide-react';
+import { Home, Briefcase, MessageSquare, ShoppingBag, User, LayoutDashboard, ClipboardList, DollarSign, Wrench, KeyRound, Building2, Shield, Plus, MoreHorizontal, Clock } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../ui/sheet';
 import { useAuth } from '../../context/AuthContext';
+
+const PROVIDER_HIDDEN = ['/news-feed', '/community-forum'];
 
 const roleTabs = {
   customer: [
@@ -17,7 +19,7 @@ const roleTabs = {
     { to: '/provider/job-board', label: 'Jobs', icon: ClipboardList },
     { to: '/provider/earnings', label: '$', icon: DollarSign },
     { to: '/messages', label: 'Chat', icon: MessageSquare },
-    { to: '/provider/trade-store', label: 'Store', icon: ShoppingBag },
+    { to: '/provider/timesheet', label: 'Time', icon: Clock },
   ],
   property: [
     { to: '/property/dashboard', label: 'Home', icon: LayoutDashboard },
@@ -104,7 +106,7 @@ export default function MobileBottomNav() {
 
 function MoreDrawerContent({ role, onNavigate }) {
   const navigate = useNavigate();
-  const links = [
+  const allLinks = [
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/live-map', label: 'Live Map', icon: Home },
     { to: '/news-feed', label: 'News Feed', icon: ClipboardList },
@@ -115,6 +117,7 @@ function MoreDrawerContent({ role, onNavigate }) {
     { to: '/my-disputes', label: 'My Disputes', icon: Shield },
     { to: '/more', label: 'All modules', icon: MoreHorizontal },
   ];
+  const links = role === 'provider' ? allLinks.filter((l) => !PROVIDER_HIDDEN.includes(l.to)) : allLinks;
   // Add role-specific quick links
   if (role === 'provider') links.unshift({ to: '/provider/calendar', label: 'Calendar', icon: ClipboardList });
   return (

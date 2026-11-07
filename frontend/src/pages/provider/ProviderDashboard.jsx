@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Zap, Users, Package, TrendingUp, ClipboardList, DollarSign, Star, ShieldCheck, ChevronRight } from 'lucide-react';
+import { Zap, Users, Package, TrendingUp, ClipboardList, DollarSign, Star, ShieldCheck, ChevronRight, Clock } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import api from '../../lib/api';
@@ -61,7 +61,7 @@ export default function ProviderDashboard() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-6">
           <QuickAction icon={ShieldCheck} title="Verify" desc="Qualifications" color="bg-teal-500" />
           <QuickAction icon={Users} title="Team" desc="Manage workers" color="bg-violet-500" />
-          <QuickAction icon={Package} title="Supply" desc="Trade store" color="bg-amber-500" to="/provider/trade-store" />
+          <QuickAction icon={Clock} title="Timesheet" desc="Track your time" color="bg-amber-500" to="/provider/timesheet" />
         </div>
       </div>
 

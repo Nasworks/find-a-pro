@@ -1517,6 +1517,381 @@ async def delete_team_member(member_id: str, user=Depends(require_user)):
     return {"ok": True}
 
 
+# ---------------- TIMESHEETS ----------------
+TIME_ENTRY_TYPES = {"work", "travel", "materials"}
+TIME_ENTRY_MODES = {"manual", "geofence"}
+
+
+def _entry_duration_seconds(entry: Dict[str, Any]) -> int:
+    """Compute duration for an entry. Running entries use 'now' as the end."""
+    try:
+        start = datetime.fromisoformat(entry["started_at"]) if isinstance(entry.get("started_at"), str) else entry["started_at"]
+        end_raw = entry.get("ended_at")
+        if end_raw:
+            end = datetime.fromisoformat(end_raw) if isinstance(end_raw, str) else end_raw
+        else:
+            end = datetime.now(timezone.utc)
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        return max(0, int((end - start).total_seconds()))
+    except Exception:
+        return 0
+
+
+def _entry_billable_cost(entry: Dict[str, Any]) -> float:
+    """Labour cost = rate/hour * minutes/60, rounded to cents. Fuel is added separately."""
+    minutes = _entry_duration_seconds(entry) / 60.0
+    rate = float(entry.get("hourly_rate_snapshot") or 0)
+    labour = round(minutes * (rate / 60.0), 2)
+    fuel = float(entry.get("fuel_cost") or 0)
+    return round(labour + fuel, 2)
+
+
+def _serialize_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    out = {k: v for k, v in entry.items() if k != "_id"}
+    out["duration_seconds"] = _entry_duration_seconds(entry)
+    out["duration_minutes"] = round(out["duration_seconds"] / 60.0, 2)
+    out["cost"] = _entry_billable_cost(entry)
+    out["is_running"] = entry.get("ended_at") is None
+    return out
+
+
+async def _resolve_worker(provider_id: str, worker_id: Optional[str], user: Dict[str, Any]) -> Dict[str, Any]:
+    """Return {worker_id, worker_name, hourly_rate}. Defaults to the provider themselves."""
+    if not worker_id or worker_id == provider_id:
+        prof = await db.provider_profiles.find_one({"user_id": provider_id}, {"_id": 0})
+        return {
+            "worker_id": provider_id,
+            "worker_name": user.get("name") or (prof or {}).get("business_name") or "You",
+            "hourly_rate": float((prof or {}).get("hourly_rate") or 85.0),
+        }
+    member = await db.team_members.find_one({"member_id": worker_id, "owner_id": provider_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Worker not found on your team")
+    return {
+        "worker_id": worker_id,
+        "worker_name": member["name"],
+        "hourly_rate": float(member.get("hourly_rate") or 45.0),
+    }
+
+
+async def _job_snapshot(job_id: Optional[str], provider_id: str) -> Dict[str, Any]:
+    if not job_id:
+        return {"job_id": None, "job_title": None, "job_address": None, "job_latitude": None, "job_longitude": None}
+    job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0})
+    if not job:
+        return {"job_id": job_id, "job_title": None, "job_address": None, "job_latitude": None, "job_longitude": None}
+    return {
+        "job_id": job_id,
+        "job_title": job.get("title"),
+        "job_address": job.get("address") or job.get("location"),
+        "job_latitude": job.get("latitude"),
+        "job_longitude": job.get("longitude"),
+    }
+
+
+@api.get("/timesheets/active")
+async def timesheets_active(user=Depends(require_user)):
+    """Return every currently-running entry for this provider (self + team)."""
+    if user["role"] != "provider":
+        raise HTTPException(status_code=403, detail="Provider role required")
+    entries = await db.time_entries.find(
+        {"provider_id": user["user_id"], "ended_at": None},
+        {"_id": 0},
+    ).sort("started_at", -1).to_list(50)
+    return [_serialize_entry(e) for e in entries]
+
+
+@api.get("/timesheets/entries")
+async def timesheets_list(
+    job_id: Optional[str] = None,
+    worker_id: Optional[str] = None,
+    type: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = 500,
+    user=Depends(require_user),
+):
+    if user["role"] != "provider":
+        raise HTTPException(status_code=403, detail="Provider role required")
+    query: Dict[str, Any] = {"provider_id": user["user_id"]}
+    if job_id:
+        query["job_id"] = job_id
+    if worker_id:
+        query["worker_id"] = worker_id
+    if type:
+        if type not in TIME_ENTRY_TYPES:
+            raise HTTPException(status_code=400, detail=f"type must be one of {sorted(TIME_ENTRY_TYPES)}")
+        query["type"] = type
+    if date_from or date_to:
+        rng: Dict[str, Any] = {}
+        if date_from:
+            rng["$gte"] = date_from
+        if date_to:
+            rng["$lte"] = date_to
+        query["started_at"] = rng
+    entries = await db.time_entries.find(query, {"_id": 0}).sort("started_at", -1).to_list(min(max(limit, 1), 1000))
+    return [_serialize_entry(e) for e in entries]
+
+
+@api.post("/timesheets/start")
+async def timesheets_start(payload: Dict[str, Any], user=Depends(require_user)):
+    """Start a running timer. Only one active entry per worker at a time."""
+    if user["role"] != "provider":
+        raise HTTPException(status_code=403, detail="Provider role required")
+    entry_type = (payload.get("type") or "work").lower()
+    if entry_type not in TIME_ENTRY_TYPES:
+        raise HTTPException(status_code=400, detail=f"type must be one of {sorted(TIME_ENTRY_TYPES)}")
+    mode = (payload.get("mode") or "manual").lower()
+    if mode not in TIME_ENTRY_MODES:
+        raise HTTPException(status_code=400, detail=f"mode must be one of {sorted(TIME_ENTRY_MODES)}")
+    worker = await _resolve_worker(user["user_id"], payload.get("worker_id"), user)
+    # Prevent a double-start for the same worker.
+    existing = await db.time_entries.find_one({
+        "provider_id": user["user_id"], "worker_id": worker["worker_id"], "ended_at": None,
+    }, {"_id": 0})
+    if existing:
+        return {"ok": False, "error": "already_running", "entry": _serialize_entry(existing)}
+    job_snap = await _job_snapshot(payload.get("job_id"), user["user_id"])
+    started_at = datetime.now(timezone.utc).isoformat()
+    entry = {
+        "entry_id": f"te_{uuid.uuid4().hex[:12]}",
+        "provider_id": user["user_id"],
+        **worker,
+        **job_snap,
+        "type": entry_type,
+        "mode": mode,
+        "started_at": started_at,
+        "ended_at": None,
+        "started_lat": payload.get("lat"),
+        "started_lng": payload.get("lng"),
+        "ended_lat": None,
+        "ended_lng": None,
+        "notes": (payload.get("notes") or "").strip() or None,
+        "fuel_km": None,
+        "fuel_cost": None,
+        "hourly_rate_snapshot": worker["hourly_rate"],
+        "billable": bool(payload.get("billable", True)),
+        "created_at": started_at,
+    }
+    await db.time_entries.insert_one(entry.copy())
+    return {"ok": True, "entry": _serialize_entry(entry)}
+
+
+@api.post("/timesheets/stop/{entry_id}")
+async def timesheets_stop(entry_id: str, payload: Dict[str, Any] | None = None, user=Depends(require_user)):
+    entry = await db.time_entries.find_one({"entry_id": entry_id})
+    if not entry or entry.get("provider_id") != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if entry.get("ended_at"):
+        return {"ok": True, "entry": _serialize_entry(entry)}
+    payload = payload or {}
+    ended_at = datetime.now(timezone.utc).isoformat()
+    update = {
+        "ended_at": ended_at,
+        "ended_lat": payload.get("lat"),
+        "ended_lng": payload.get("lng"),
+    }
+    if payload.get("notes"):
+        update["notes"] = str(payload["notes"]).strip() or entry.get("notes")
+    await db.time_entries.update_one({"entry_id": entry_id}, {"$set": update})
+    entry.update(update)
+    return {"ok": True, "entry": _serialize_entry(entry)}
+
+
+@api.post("/timesheets/entries")
+async def timesheets_create(payload: Dict[str, Any], user=Depends(require_user)):
+    """Create a completed entry directly (retro log, travel, materials run with fuel)."""
+    if user["role"] != "provider":
+        raise HTTPException(status_code=403, detail="Provider role required")
+    entry_type = (payload.get("type") or "work").lower()
+    if entry_type not in TIME_ENTRY_TYPES:
+        raise HTTPException(status_code=400, detail=f"type must be one of {sorted(TIME_ENTRY_TYPES)}")
+    if not payload.get("started_at") or not payload.get("ended_at"):
+        raise HTTPException(status_code=400, detail="started_at and ended_at are required")
+    worker = await _resolve_worker(user["user_id"], payload.get("worker_id"), user)
+    job_snap = await _job_snapshot(payload.get("job_id"), user["user_id"])
+    now = datetime.now(timezone.utc).isoformat()
+    entry = {
+        "entry_id": f"te_{uuid.uuid4().hex[:12]}",
+        "provider_id": user["user_id"],
+        **worker,
+        **job_snap,
+        "type": entry_type,
+        "mode": (payload.get("mode") or "manual").lower(),
+        "started_at": payload["started_at"],
+        "ended_at": payload["ended_at"],
+        "started_lat": payload.get("start_lat"),
+        "started_lng": payload.get("start_lng"),
+        "ended_lat": payload.get("end_lat"),
+        "ended_lng": payload.get("end_lng"),
+        "notes": (payload.get("notes") or "").strip() or None,
+        "fuel_km": float(payload["fuel_km"]) if payload.get("fuel_km") not in (None, "") else None,
+        "fuel_cost": float(payload["fuel_cost"]) if payload.get("fuel_cost") not in (None, "") else None,
+        "hourly_rate_snapshot": float(payload.get("hourly_rate") or worker["hourly_rate"]),
+        "billable": bool(payload.get("billable", True)),
+        "created_at": now,
+    }
+    await db.time_entries.insert_one(entry.copy())
+    return _serialize_entry(entry)
+
+
+@api.patch("/timesheets/entries/{entry_id}")
+async def timesheets_update(entry_id: str, payload: Dict[str, Any], user=Depends(require_user)):
+    entry = await db.time_entries.find_one({"entry_id": entry_id})
+    if not entry or entry.get("provider_id") != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    allowed = {k: payload[k] for k in ("notes", "billable", "fuel_km", "fuel_cost", "started_at", "ended_at", "hourly_rate_snapshot", "type") if k in payload}
+    if "type" in allowed and allowed["type"] not in TIME_ENTRY_TYPES:
+        raise HTTPException(status_code=400, detail="invalid type")
+    await db.time_entries.update_one({"entry_id": entry_id}, {"$set": allowed})
+    entry.update(allowed)
+    return _serialize_entry(entry)
+
+
+@api.delete("/timesheets/entries/{entry_id}")
+async def timesheets_delete(entry_id: str, user=Depends(require_user)):
+    entry = await db.time_entries.find_one({"entry_id": entry_id}, {"_id": 1, "provider_id": 1})
+    if not entry or entry.get("provider_id") != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    await db.time_entries.delete_one({"entry_id": entry_id})
+    return {"ok": True}
+
+
+@api.get("/timesheets/summary")
+async def timesheets_summary(
+    job_id: Optional[str] = None,
+    worker_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    user=Depends(require_user),
+):
+    """Aggregate totals broken down by type + billable. Used by invoice + dashboard."""
+    if user["role"] != "provider":
+        raise HTTPException(status_code=403, detail="Provider role required")
+    query: Dict[str, Any] = {"provider_id": user["user_id"]}
+    if job_id:
+        query["job_id"] = job_id
+    if worker_id:
+        query["worker_id"] = worker_id
+    if date_from or date_to:
+        rng: Dict[str, Any] = {}
+        if date_from:
+            rng["$gte"] = date_from
+        if date_to:
+            rng["$lte"] = date_to
+        query["started_at"] = rng
+    entries = await db.time_entries.find(query, {"_id": 0}).to_list(5000)
+    buckets = {"work": {"minutes": 0.0, "cost": 0.0, "count": 0}, "travel": {"minutes": 0.0, "cost": 0.0, "count": 0}, "materials": {"minutes": 0.0, "cost": 0.0, "count": 0}}
+    total_minutes = 0.0
+    total_cost = 0.0
+    billable_cost = 0.0
+    fuel_cost = 0.0
+    for e in entries:
+        mins = _entry_duration_seconds(e) / 60.0
+        cost = _entry_billable_cost(e)
+        t = e.get("type", "work")
+        if t not in buckets:
+            buckets[t] = {"minutes": 0.0, "cost": 0.0, "count": 0}
+        buckets[t]["minutes"] += mins
+        buckets[t]["cost"] += cost
+        buckets[t]["count"] += 1
+        total_minutes += mins
+        total_cost += cost
+        if e.get("billable", True):
+            billable_cost += cost
+        if e.get("fuel_cost"):
+            fuel_cost += float(e["fuel_cost"])
+    for b in buckets.values():
+        b["minutes"] = round(b["minutes"], 2)
+        b["hours"] = round(b["minutes"] / 60.0, 2)
+        b["cost"] = round(b["cost"], 2)
+    return {
+        "entries": len(entries),
+        "total_minutes": round(total_minutes, 2),
+        "total_hours": round(total_minutes / 60.0, 2),
+        "total_cost": round(total_cost, 2),
+        "billable_cost": round(billable_cost, 2),
+        "fuel_cost": round(fuel_cost, 2),
+        "by_type": buckets,
+    }
+
+
+@api.get("/timesheets/jobs")
+async def timesheets_jobs(user=Depends(require_user)):
+    """Jobs a provider can log time against: booked jobs + accepted bids."""
+    if user["role"] != "provider":
+        raise HTTPException(status_code=403, detail="Provider role required")
+    uid = user["user_id"]
+    bookings = await db.bookings.find({"provider_id": uid, "job_id": {"$ne": None}}, {"_id": 0, "job_id": 1}).to_list(500)
+    bids = await db.bids.find({"provider_id": uid, "status": {"$in": ["accepted", "completed"]}}, {"_id": 0, "job_id": 1}).to_list(500)
+    job_ids = list({x["job_id"] for x in bookings + bids if x.get("job_id")})
+    if not job_ids:
+        return []
+    return await db.jobs.find({"job_id": {"$in": job_ids}}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+GST_RATE = 0.15
+TYPE_LINE_LABEL = {"work": "Labour", "travel": "Travel time", "materials": "Materials pickup"}
+
+
+@api.get("/jobs/{job_id}/invoice")
+async def job_invoice(job_id: str, user=Depends(require_user)):
+    """Invoice = agreed quote + billable timesheet line items for the job."""
+    job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    bid = await db.bids.find_one({"job_id": job_id, "status": {"$in": ["accepted", "completed"]}}, {"_id": 0})
+    provider_id = (bid or {}).get("provider_id")
+    if not provider_id:
+        booking = await db.bookings.find_one({"job_id": job_id}, {"_id": 0})
+        provider_id = (booking or {}).get("provider_id")
+    if not provider_id and user["role"] == "provider":
+        provider_id = user["user_id"]
+    allowed = {job.get("client_id"), job.get("approver_id"), provider_id}
+    if user["user_id"] not in allowed:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    entries = await db.time_entries.find(
+        {"job_id": job_id, "provider_id": provider_id, "billable": True, "ended_at": {"$ne": None}}, {"_id": 0}
+    ).sort("started_at", 1).to_list(1000)
+    lines: List[Dict[str, Any]] = []
+    if bid:
+        lines.append({"kind": "quote", "description": f"Agreed quote — {bid.get('provider_name') or 'provider'}", "quantity": 1, "unit": "fixed", "rate": float(bid["amount"]), "amount": round(float(bid["amount"]), 2)})
+    groups: Dict[tuple, Dict[str, Any]] = {}
+    fuel_total = 0.0
+    fuel_km = 0.0
+    for e in entries:
+        mins = _entry_duration_seconds(e) / 60.0
+        rate = float(e.get("hourly_rate_snapshot") or 0)
+        key = (e.get("type", "work"), e.get("worker_name"), rate)
+        g = groups.setdefault(key, {"minutes": 0.0, "amount": 0.0})
+        g["minutes"] += mins
+        g["amount"] += mins * rate / 60.0
+        fuel_total += float(e.get("fuel_cost") or 0)
+        fuel_km += float(e.get("fuel_km") or 0)
+    for (t, worker, rate), g in groups.items():
+        lines.append({"kind": t, "description": f"{TYPE_LINE_LABEL.get(t, t.title())} — {worker}", "quantity": round(g["minutes"] / 60.0, 2), "unit": "hours", "rate": rate, "amount": round(g["amount"], 2)})
+    if fuel_total:
+        lines.append({"kind": "fuel", "description": f"Fuel / vehicle{f' ({round(fuel_km, 1)} km)' if fuel_km else ''}", "quantity": 1, "unit": "fixed", "rate": round(fuel_total, 2), "amount": round(fuel_total, 2)})
+    subtotal = round(sum(line["amount"] for line in lines), 2)
+    gst = round(subtotal * GST_RATE, 2)
+    return {
+        "job_id": job_id,
+        "job_title": job.get("title"),
+        "job_status": job.get("status"),
+        "provider_id": provider_id,
+        "lines": lines,
+        "timesheet_minutes": round(sum(g["minutes"] for g in groups.values()), 2),
+        "entries_count": len(entries),
+        "subtotal": subtotal,
+        "gst_rate": GST_RATE,
+        "gst": gst,
+        "total": round(subtotal + gst, 2),
+    }
+
+
 # ---------------- TRADES BOARD (provider-to-provider jobs) ----------------
 class TradeJob(BaseModel):
     trade_job_id: str = Field(default_factory=lambda: f"tj_{uuid.uuid4().hex[:10]}")

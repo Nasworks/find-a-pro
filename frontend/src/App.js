@@ -30,17 +30,13 @@ import ProviderDashboard from './pages/provider/ProviderDashboard';
 import ProviderJobBoard from './pages/provider/ProviderJobBoard';
 import ProviderEarnings from './pages/provider/ProviderEarnings';
 import ProviderCalendar from './pages/provider/ProviderCalendar';
-import ProviderTradeStore from './pages/provider/ProviderTradeStore';
 import Quotations from './pages/provider/Quotations';
 import Team from './pages/provider/Team';
-import TradesBoard from './pages/provider/TradesBoard';
 import ExternalJobs from './pages/provider/ExternalJobs';
 import TrackWorkers from './pages/provider/TrackWorkers';
-import GpsDevices from './pages/provider/GpsDevices';
 import JobHistory from './pages/provider/JobHistory';
 import Referrals from './pages/provider/Referrals';
-import Membership from './pages/provider/Membership';
-import WarrantyClaims from './pages/provider/WarrantyClaims';
+import Timesheet from './pages/provider/Timesheet';
 
 import PropertyDashboard from './pages/property/PropertyDashboard';
 import InsuranceDashboard from './pages/insurance/InsuranceDashboard';
@@ -66,6 +62,12 @@ function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
   if (!user) return <Navigate to="/" replace />;
+  return children;
+}
+
+function NotForProvider({ children }) {
+  const { user } = useAuth();
+  if (user?.role === 'provider') return <Navigate to="/provider/dashboard" replace />;
   return children;
 }
 
@@ -105,7 +107,7 @@ function AppRouter() {
         <Route path="/marketplace" element={<Marketplace />} />
         <Route path="/marketplace/product/:id" element={<ProductDetail />} />
         <Route path="/cart" element={<Cart />} />
-        <Route path="/news-feed" element={<NewsFeed />} />
+        <Route path="/news-feed" element={<NotForProvider><NewsFeed /></NotForProvider>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/live-map" element={<LiveMap />} />
 
@@ -114,17 +116,13 @@ function AppRouter() {
         <Route path="/provider/job-board" element={<ProviderJobBoard />} />
         <Route path="/provider/earnings" element={<ProviderEarnings />} />
         <Route path="/provider/calendar" element={<ProviderCalendar />} />
-        <Route path="/provider/trade-store" element={<ProviderTradeStore />} />
         <Route path="/provider/quotations" element={<Quotations />} />
         <Route path="/provider/team" element={<Team />} />
-        <Route path="/provider/trades-board" element={<TradesBoard />} />
         <Route path="/provider/external-jobs" element={<ExternalJobs />} />
         <Route path="/provider/track-workers" element={<TrackWorkers />} />
-        <Route path="/provider/gps-devices" element={<GpsDevices />} />
         <Route path="/provider/job-history" element={<JobHistory />} />
         <Route path="/provider/referrals" element={<Referrals />} />
-        <Route path="/provider/membership" element={<Membership />} />
-        <Route path="/provider/warranty-claims" element={<WarrantyClaims />} />
+        <Route path="/provider/timesheet" element={<Timesheet />} />
 
         {/* Property */}
         <Route path="/property/dashboard" element={<PropertyDashboard />} />
@@ -146,8 +144,8 @@ function AppRouter() {
         <Route path="/more" element={<MoreMenu />} />
         <Route path="/cost-estimator" element={<CostEstimator />} />
         <Route path="/guide-help" element={<GuideHelp />} />
-        <Route path="/community-forum" element={<CommunityForum />} />
-        <Route path="/community-forum/:postId" element={<ForumPostDetail />} />
+        <Route path="/community-forum" element={<NotForProvider><CommunityForum /></NotForProvider>} />
+        <Route path="/community-forum/:postId" element={<NotForProvider><ForumPostDetail /></NotForProvider>} />
         <Route path="/tenancies" element={<Tenancies />} />
         <Route path="/approvals" element={<ApprovalQueue />} />
         <Route path="/find-providers" element={<FindProviders />} />

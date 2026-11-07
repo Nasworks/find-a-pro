@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, HardHat, Radio, History, Share2, Crown, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Heart } from 'lucide-react';
+import { Home, Briefcase, CalendarCheck, MessageSquare, User, Map, ShoppingBag, Newspaper, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, History, Share2, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Heart, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Logo from '../Logo';
 import { User as UserIcon, Wrench as WrenchIcon, Building2 as B2, Shield as ShieldIcon } from 'lucide-react';
@@ -37,23 +37,17 @@ const providerNav = [
     { to: '/provider/calendar', label: 'Calendar', icon: Calendar },
     { to: '/provider/earnings', label: 'Earnings', icon: DollarSign },
     { to: '/provider/quotations', label: 'Quotations', icon: FileText },
+    { to: '/provider/timesheet', label: 'Timesheet', icon: Clock },
     { to: '/messages', label: 'Messages', icon: MessageSquare },
   ]},
   { section: 'Team & Ops', items: [
     { to: '/provider/team', label: 'Team', icon: Users },
-    { to: '/provider/trades-board', label: 'Trades Board', icon: HardHat },
     { to: '/provider/external-jobs', label: 'External Jobs', icon: LinkIcon },
     { to: '/provider/track-workers', label: 'Track Workers', icon: Locate },
-    { to: '/provider/gps-devices', label: 'GPS Devices', icon: Radio },
     { to: '/provider/job-history', label: 'Job History', icon: History },
   ]},
   { section: 'Grow', items: [
-    { to: '/provider/trade-store', label: 'Trade Store', icon: ShoppingBag },
-    { to: '/news-feed', label: 'News Feed', icon: Newspaper },
-    { to: '/community-forum', label: 'Forum', icon: Users },
     { to: '/provider/referrals', label: 'Referrals', icon: Share2 },
-    { to: '/provider/membership', label: 'Membership', icon: Crown },
-    { to: '/provider/warranty-claims', label: 'Warranty Claims', icon: ShieldCheck },
     { to: '/profile', label: 'Profile', icon: User },
     { to: '/more', label: 'More', icon: MoreHorizontal },
   ]},
