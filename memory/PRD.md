@@ -23,6 +23,14 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 7. Live Map, News Feed, Cost Estimator, Community Forum, Legal & Privacy, Guide & Help, Report Provider, Disputes, More menu
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
+## What's Implemented (2026-06 — Timesheet, nav cleanup, distance filter)
+- ✅ **Timesheet module** (`/provider/timesheet`, `pages/provider/Timesheet.jsx`): live start/stop timers (work/travel/materials) + manual entries with km/fuel, GPS auto-geofence mode, browser location captured at start & stop (shown as map links). Job dropdown from `GET /api/timesheets/jobs` (provider's booked/accepted-bid jobs).
+- ✅ **Invoice line items**: `GET /api/jobs/{job_id}/invoice` = agreed quote + billable completed timesheet lines (grouped per type/worker/rate) + fuel, subtotal, 15% GST, total. Access: job client, approver, linked provider. Shown on Timesheet (invoice preview) and customer JobDetail (status != open) via `components/JobInvoice.jsx`.
+- ✅ **Removed for providers**: Warranty Claims, Trades Board, GPS Devices, Trade Store, News Feed, Forum, Membership.
+- ✅ **Removed for all roles**: Marketplace/Shop/Cart (incl. top-bar cart icon), News Feed, Community Forum, Live Map, dead Notifications/Settings cards on /more. Routes removed → redirect to role home.
+- ✅ **Find Providers distance filter**: "Distance Away" slider (1–50+ km) from Auckland CBD default or "Use my location"; `GET /api/providers/search` accepts `lat,lng,max_km` and `sort=nearest`, returns `distance_km` shown on cards.
+- ✅ demo-login now resets the demo account's role; timesheet entry validation (end>start, numeric fuel → 400).
+
 ## What's Implemented (2026-02-08 — Investor-ready polish pass)
 - ✅ **Zero-login role picker on landing** (`/app/frontend/src/pages/LandingRoleSelect.jsx`) — visitors pick a role card and are auto-signed in via `demoLogin(role)` behind the scenes; no signup, no password. Copy updated to "Live preview · No signup required" and "Enter the preview as…". The "Log in" link is retained for repeat users.
 - ✅ **Fixed Provider `/profile` React crash** (iteration_14 P0) — JSX ternary in `pages/client/Profile.jsx` L62-79 now wraps the array before `.map()`. All 4 stat tiles render for both customer and provider roles.

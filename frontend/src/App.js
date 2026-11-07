@@ -19,7 +19,6 @@ import MyJobPosts from './pages/client/MyJobPosts';
 import Bookings from './pages/client/Bookings';
 import Messages from './pages/client/Messages';
 import Profile from './pages/client/Profile';
-import LiveMap from './pages/client/LiveMap';
 import JobDetail from './pages/client/JobDetail';
 
 import ProviderDashboard from './pages/provider/ProviderDashboard';
@@ -93,7 +92,6 @@ function AppRouter() {
         <Route path="/bookings" element={<Bookings />} />
         <Route path="/messages" element={<Messages />} />
         <Route path="/profile" element={<Profile />} />
-        <Route path="/live-map" element={<LiveMap />} />
 
         {/* Provider */}
         <Route path="/provider/dashboard" element={<ProviderDashboard />} />

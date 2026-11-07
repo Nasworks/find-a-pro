@@ -106,7 +106,7 @@ function MoreDrawerContent({ role, onNavigate }) {
   const navigate = useNavigate();
   const links = [
     { to: '/profile', label: 'Profile', icon: User },
-    { to: '/live-map', label: 'Live Map', icon: Home },
+    { to: '/find-providers', label: 'Find Providers', icon: Home },
     { to: '/cost-estimator', label: 'Cost Estimator', icon: DollarSign },
     { to: '/guide-help', label: 'Guide & Help', icon: Shield },
     { to: '/legal-privacy', label: 'Legal & Privacy', icon: Shield },

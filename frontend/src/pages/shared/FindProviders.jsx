@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, Star, Shield, ShieldCheck, Award, Loader2, X, MapPin, Sparkles, Users, Heart } from 'lucide-react';
+import { Search, Star, Shield, ShieldCheck, Award, Loader2, X, MapPin, Sparkles, Users, Heart, LocateFixed } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
+import { Slider } from '../../components/ui/slider';
 import ServicePicker from '../../components/ServicePicker';
 import api from '../../lib/api';
 import { toast } from 'sonner';
@@ -23,7 +24,11 @@ const SORT_OPTIONS = [
   { id: 'reviews', label: 'Most Reviews' },
   { id: 'price_asc', label: 'Price: Low to High' },
   { id: 'price_desc', label: 'Price: High to Low' },
+  { id: 'nearest', label: 'Nearest First' },
 ];
+
+const MAX_KM = 50;
+const DEFAULT_ORIGIN = { lat: -36.8485, lng: 174.7633, label: 'Auckland CBD' };
 
 const initialFilters = {
   category: '',
@@ -37,6 +42,7 @@ const initialFilters = {
   verified_only: false,
   background_checked: false,
   accredited: false,
+  max_km: MAX_KM,
   q: '',
   sort: 'best_match',
 };
@@ -53,10 +59,13 @@ export default function FindProviders() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [origin, setOrigin] = useState(DEFAULT_ORIGIN);
+  const reqRef = useRef(0);
 
   const load = useCallback(() => {
     setLoading(true);
-    const params = { sort: filters.sort };
+    const params = { sort: filters.sort, lat: origin.lat, lng: origin.lng };
+    if (filters.max_km < MAX_KM) params.max_km = filters.max_km;
     if (filters.category) params.category = filters.category;
     if (filters.subcategory) params.subcategory = filters.subcategory;
     if (filters.q) params.q = filters.q;
@@ -67,11 +76,12 @@ export default function FindProviders() {
     if (filters.verified_only) params.verified_only = true;
     if (filters.background_checked) params.background_checked = true;
     if (filters.accredited) params.accredited = true;
+    const reqId = ++reqRef.current;
     api.get('/providers/search', { params })
-      .then((r) => setResults(r.data.results || []))
+      .then((r) => { if (reqId === reqRef.current) setResults(r.data.results || []); })
       .catch(() => toast.error('Search failed'))
-      .finally(() => setLoading(false));
-  }, [filters]);
+      .finally(() => { if (reqId === reqRef.current) setLoading(false); });
+  }, [filters, origin]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -88,6 +98,7 @@ export default function FindProviders() {
     if (filters.verified_only) chips.push({ k: 'verified_only', label: 'Verified' });
     if (filters.background_checked) chips.push({ k: 'background_checked', label: 'Background checked' });
     if (filters.accredited) chips.push({ k: 'accredited', label: 'Accredited' });
+    if (filters.max_km < MAX_KM) chips.push({ k: 'max_km', label: `Within ${filters.max_km} km` });
     return chips;
   }, [filters]);
 
@@ -100,6 +111,8 @@ export default function FindProviders() {
       set('verified_only', false);
     } else if (k === 'background_checked') {
       set('background_checked', false);
+    } else if (k === 'max_km') {
+      set('max_km', MAX_KM);
     } else if (k === 'accredited') {
       set('accredited', false);
     } else {
@@ -160,7 +173,7 @@ export default function FindProviders() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
-        <FiltersPanel filters={filters} set={set} />
+        <FiltersPanel filters={filters} set={set} origin={origin} setOrigin={setOrigin} />
 
         <div>
           {loading ? (
@@ -204,9 +217,11 @@ export default function FindProviders() {
   );
 }
 
-function FiltersPanel({ filters, set }) {
+function FiltersPanel({ filters, set, origin, setOrigin }) {
   return (
     <aside className="space-y-4">
+      <DistanceFilter value={filters.max_km} onCommit={(v) => set('max_km', v)} origin={origin} setOrigin={setOrigin} />
+
       {/* Provider Rate */}
       <Card title="Provider Rate">
         <div className="grid grid-cols-3 gap-2">
@@ -239,6 +254,49 @@ function FiltersPanel({ filters, set }) {
         </div>
       </Card>
     </aside>
+  );
+}
+
+function DistanceFilter({ value, onCommit, origin, setOrigin }) {
+  const [local, setLocal] = useState(value);
+  const [locating, setLocating] = useState(false);
+  useEffect(() => setLocal(value), [value]);
+  const useMyLocation = () => {
+    if (!navigator.geolocation) return toast.error('Location is not available in this browser');
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (p) => { setOrigin({ lat: p.coords.latitude, lng: p.coords.longitude, label: 'Your location' }); setLocating(false); },
+      () => { toast.error('Could not get your location'); setLocating(false); },
+      { timeout: 8000 },
+    );
+  };
+  return (
+    <Card title="Distance Away">
+      <div className="flex items-baseline justify-between mb-3">
+        <span className="text-2xl font-bold text-foreground tabular-nums" data-testid="distance-value">{local >= MAX_KM ? 'Any' : `${local} km`}</span>
+        <span className="text-[11px] text-muted-foreground">{local >= MAX_KM ? 'no limit' : 'or closer'}</span>
+      </div>
+      <Slider
+        data-testid="distance-slider"
+        min={1}
+        max={MAX_KM}
+        step={1}
+        value={[local]}
+        onValueChange={([v]) => setLocal(v)}
+        onValueCommit={([v]) => onCommit(v)}
+      />
+      <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5"><span>1 km</span><span>25 km</span><span>{MAX_KM}+ km</span></div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs">
+        <span className="inline-flex items-center gap-1 text-muted-foreground" data-testid="distance-origin"><MapPin className="w-3 h-3 text-primary" /> From {origin.label}</span>
+        {origin.label === DEFAULT_ORIGIN.label ? (
+          <button data-testid="use-my-location" onClick={useMyLocation} disabled={locating} className="inline-flex items-center gap-1 text-primary hover:underline shrink-0">
+            {locating ? <Loader2 className="w-3 h-3 animate-spin" /> : <LocateFixed className="w-3 h-3" />} Use my location
+          </button>
+        ) : (
+          <button data-testid="reset-location" onClick={() => setOrigin(DEFAULT_ORIGIN)} className="text-muted-foreground hover:text-foreground shrink-0">Reset</button>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -357,7 +415,7 @@ function ProviderCard({ p, onClick, onToggleSave }) {
       </div>
       <p className="mt-3 text-xs text-muted-foreground line-clamp-2">{p.bio}</p>
       <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs">
-        <span className="inline-flex items-center gap-1 text-muted-foreground"><MapPin className="w-3 h-3" /> Auckland</span>
+        <span className="inline-flex items-center gap-1 text-muted-foreground" data-testid={`provider-distance-${p.user_id}`}><MapPin className="w-3 h-3" /> {p.distance_km != null ? `${p.distance_km} km away` : 'Auckland'}</span>
         <span className="font-bold text-foreground">${p.hourly_rate?.toFixed?.(0)}/hr</span>
       </div>
     </div>

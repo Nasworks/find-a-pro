@@ -574,7 +574,7 @@ function EntryRow({ e, onRemove }) {
         </div>
         <div className="text-xs text-muted-foreground truncate">
           {fmtTime(e.started_at)} – {fmtTime(e.ended_at)}
-          {e.fuel_cost != null && <> · <Fuel className="inline w-3 h-3" /> ${e.fuel_cost}{e.fuel_km != null ? ` · ${e.fuel_km} km` : ''}</>}
+          {e.fuel_cost != null && <> · <Fuel className="inline w-3 h-3" /> ${Number(e.fuel_cost).toFixed(2)}{e.fuel_km != null ? ` · ${e.fuel_km} km` : ''}</>}
           {e.notes && <> · {e.notes}</>}
         </div>
         <EntryLocation e={e} />

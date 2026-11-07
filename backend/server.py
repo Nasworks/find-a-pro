@@ -1177,6 +1177,14 @@ async def nearby_providers(category: Optional[str] = None):
 
 
 # ---------------- PROVIDER DIRECTORY (customer-facing browse & profile) ----------------
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    import math
+    r1, r2 = math.radians(lat1), math.radians(lat2)
+    dlat, dlng = r2 - r1, math.radians(lng2 - lng1)
+    h = math.sin(dlat / 2) ** 2 + math.cos(r1) * math.cos(r2) * math.sin(dlng / 2) ** 2
+    return 2 * 6371.0 * math.asin(math.sqrt(h))
+
+
 def _rate_bucket(hourly_rate: float) -> str:
     if hourly_rate < 60:
         return "low"
@@ -1197,7 +1205,10 @@ async def search_providers(
     verified_only: bool = False,
     background_checked: bool = False,
     accredited: bool = False,
-    sort: str = "best_match",             # best_match | rating | price_asc | price_desc | reviews
+    sort: str = "best_match",             # best_match | rating | price_asc | price_desc | reviews | nearest
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
+    max_km: Optional[float] = None,
     limit: int = 60,
     user=Depends(require_user),
 ):
@@ -1236,8 +1247,16 @@ async def search_providers(
             return False
         return True
     profiles = [p for p in profiles if keep(p)]
+    if lat is not None and lng is not None:
+        for p in profiles:
+            if p.get("latitude") is not None and p.get("longitude") is not None:
+                p["distance_km"] = round(_haversine_km(lat, lng, p["latitude"], p["longitude"]), 1)
+        if max_km is not None:
+            profiles = [p for p in profiles if p.get("distance_km") is not None and p["distance_km"] <= max_km]
     # Sort
-    if sort == "rating":
+    if sort == "nearest":
+        profiles.sort(key=lambda p: p.get("distance_km", 1e9))
+    elif sort == "rating":
         profiles.sort(key=lambda p: (p.get("rating", 0), p.get("reviews_count", 0)), reverse=True)
     elif sort == "reviews":
         profiles.sort(key=lambda p: p.get("reviews_count", 0), reverse=True)

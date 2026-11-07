@@ -9,8 +9,6 @@ const items = [
   { to: '/legal-privacy', icon: Scale, label: 'Legal & Privacy', desc: 'ToS, Privacy, Warranty', color: 'bg-slate-500' },
   { to: '/report-provider', icon: Flag, label: 'Report Provider', desc: 'Report abuse or unsafe work', color: 'bg-rose-500' },
   { to: '/my-disputes', icon: Gavel, label: 'My Disputes', desc: 'Track mediation status', color: 'bg-amber-500' },
-  { to: '/notifications', icon: Bell, label: 'Notifications', desc: 'Alerts and email preferences', color: 'bg-cyan-500' },
-  { to: '/settings', icon: Settings, label: 'Settings', desc: 'Account, security, billing', color: 'bg-teal-500' },
 ];
 
 export default function MoreMenu() {

@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 16: verified removal of Marketplace/Shop/News Feed/Forum/Trade Store/Cart (+ provider Warranty Claims/Trades Board/GPS Devices/Membership) across all 6 demo roles in desktop sidebar, top bar, mobile bottom nav, mobile More drawer and /more page; all 11 removed URLs redirect to each role's home dashboard; bottom nav last tab is Book (customer/property/landlord/facilities) and Time for provider; property dashboard has no 'Order supplies' and no page errors. Retested iteration_15 fixes: timesheet delete button visible with no hover (opacity 1), the running entry is not duplicated in the list, Today/Billable/Fuel tiles show 2 decimals, mobile timesheet shows 2-column stat tiles in a single-column layout, demo-login role and 400/403 validations work. Regression: start/stop timer with GPS start/stop location, manual travel entry add/delete, provider invoice preview, and the customer JobDetail invoice on in-progress job_3f75aa7134 all work. Backend pytest 63/63 passed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "MoreMenu (/more)", "issue": "The 'Notifications' (/notifications) and 'Settings' (/settings) cards have no matching routes in App.js, so the catch-all route sends users back to their home dashboard. These are dead links for every role.", "selector": "[data-testid='more-link-notifications'], [data-testid='more-link-settings']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Timesheet entry row", "issues": ["The per-entry fuel text shows the raw value ('$7.5'), not 2 decimals (Timesheet.jsx line ~577: ${e.fuel_cost}). It should use Number(e.fuel_cost).toFixed(2)."]},
+      {"screen": "Timesheet Add entry dialog", "issues": ["The dialog uses the browser's native date/time pickers instead of the shadcn Calendar.", "The dialog inputs (date, time, km, fuel, notes, billable) have no data-testid."]},
+      {"screen": "Mobile view mode - More drawer", "issues": ["The bottom Sheet opens at the left edge of the real browser viewport, outside the centered phone frame (only noticeable in desktop browsers using the view-mode toggle)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter16_removed_modules.py", "/app/backend/tests/test_timesheet_invoice.py", "/app/backend/tests/test_demo_login_and_routes.py", "/app/test_reports/pytest/pytest_results_iter16.xml"],
+  "action_items": [
+    "Add routes/pages for /notifications and /settings, or remove those two cards from MoreMenu.jsx",
+    "Format the per-entry fuel_cost to 2 decimals in the Timesheet EntryRow",
+    "Optional: add data-testids to the Add-entry dialog inputs; consider the shadcn Calendar for the date fields",
+    "Optional cleanup: the unused page files Marketplace.jsx, Cart.jsx, ProductDetail.jsx, CommunityForum.jsx and ForumPostDetail.jsx and CartContext/CartProvider are still in the bundle (dead code)"
+  ],
+  "critical_code_review_comments": [
+    "The removed routes rely on the catch-all '*' -> '/' -> RootRoute redirect. This works, but it is also why /notifications and /settings silently bounce to home.",
+    "The backend still serves /api/marketplace/products, /api/forum/posts and /api/news (the existing regression tests still hit them). That is acceptable if only the UI was meant to be removed."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter16_removed_modules.py"],
+  "success_rate": {"backend": "100% (63/63)", "frontend": "~95% (all requested checks pass; /more has 2 dead links)"},
+  "seed_data_creation": "Registered one TEST_qa-provider-* user to test invoice 403. Created 2 timesheet entries (te_7f74f1e9a99d, te_a2218799f30d) and deleted both. Leftover data from earlier runs is visible: a 'TEST_TS job 1794051848' in the provider's invoice job select, plus 'Invoice test leak' entries.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use page.request.post('/api/auth/demo-login', {role}) for login. View mode is localStorage key 'dispatchr_view_mode' ('mobile'|'desktop'). Export REACT_APP_BACKEND_URL before running pytest. Example job: job_3f75aa7134."
+}
