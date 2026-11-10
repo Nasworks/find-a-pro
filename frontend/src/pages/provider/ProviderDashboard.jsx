@@ -41,8 +41,8 @@ export default function ProviderDashboard() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="bg-card border border-border rounded-2xl p-6">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-blue-600 text-white font-bold text-lg flex items-center justify-center">{initials}</div>
             <div>
               <div className="text-xs text-muted-foreground">Provider Portal</div>

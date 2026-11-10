@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, Search, MessageSquare } from 'lucide-react';
+import { Send, Search, MessageSquare, ChevronLeft } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
@@ -15,7 +15,7 @@ export default function Messages() {
   const loadThreads = async () => {
     const r = await api.get('/threads');
     setThreads(r.data);
-    if (r.data.length && !selected) setSelected(r.data[0]);
+    if (r.data.length && !selected && window.innerWidth >= 768) setSelected(r.data[0]);
   };
 
   const loadMessages = async (thread_id) => {
@@ -41,10 +41,10 @@ export default function Messages() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold text-foreground mb-4">Messages</h1>
-      <div className="bg-card border border-border rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-[320px_1fr] h-[calc(100vh-200px)]">
-        <div className="border-r border-border flex flex-col">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+      <h1 className={`text-2xl font-bold text-foreground mb-4 ${selected ? 'hidden md:block' : ''}`}>Messages</h1>
+      <div className="bg-card border border-border rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-[320px_1fr] h-[calc(100dvh-190px)] md:h-[calc(100vh-200px)]">
+        <div className={`border-r border-border flex-col min-h-0 ${selected ? 'hidden md:flex' : 'flex'}`}>
           <div className="p-3 border-b border-border">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -76,16 +76,17 @@ export default function Messages() {
           </div>
         </div>
 
-        <div className="flex flex-col">
+        <div className={`flex-col min-h-0 min-w-0 ${selected ? 'flex' : 'hidden md:flex'}`}>
           {selected ? (
             <>
-              <div className="h-14 border-b border-border px-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-blue-600 text-white text-xs font-semibold flex items-center justify-center">
+              <div className="h-14 border-b border-border px-2 md:px-4 flex items-center gap-3">
+                <button onClick={() => setSelected(null)} data-testid="messages-back-btn" className="md:hidden w-9 h-9 rounded-full hover:bg-accent flex items-center justify-center" aria-label="Back to conversations"><ChevronLeft className="w-5 h-5" /></button>
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-blue-600 text-white text-xs font-semibold flex items-center justify-center shrink-0">
                   {otherName(selected).split(' ').map((s) => s[0]).slice(0, 2).join('')}
                 </div>
-                <div>
-                  <div className="text-sm font-medium text-foreground">{otherName(selected)}</div>
-                  <div className="text-xs text-muted-foreground">{selected.subject}</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-foreground truncate">{otherName(selected)}</div>
+                  <div className="text-xs text-muted-foreground truncate">{selected.subject}</div>
                 </div>
               </div>
               <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-3 bg-muted/20">
@@ -94,7 +95,7 @@ export default function Messages() {
                   const mine = m.sender_id === user.user_id;
                   return (
                     <div key={m.message_id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[70%] px-3 py-2 rounded-2xl text-sm ${mine ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-card border border-border text-foreground rounded-bl-sm'}`}>
+                      <div className={`max-w-[80%] md:max-w-[70%] px-3 py-2 rounded-2xl text-sm break-words ${mine ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-card border border-border text-foreground rounded-bl-sm'}`}>
                         <div>{m.content}</div>
                         <div className={`text-[10px] mt-1 ${mine ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                       </div>

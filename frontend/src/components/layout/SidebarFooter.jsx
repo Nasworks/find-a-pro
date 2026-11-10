@@ -15,7 +15,7 @@ import { useViewMode } from '../../context/ViewModeContext';
 export default function SidebarFooter({ collapsed, roles }) {
   const { logout } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
-  const { toggle: toggleViewMode } = useViewMode();
+  const { toggle: toggleViewMode, compact } = useViewMode();
   const navigate = useNavigate();
 
   const doLogout = async () => { await logout(); navigate('/'); };
@@ -33,14 +33,14 @@ export default function SidebarFooter({ collapsed, roles }) {
         {!collapsed && <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
       </button>
 
-      <button
+      {!compact && <button
         data-testid="sidebar-view-mode-toggle"
         onClick={swapView}
         className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
       >
         <Smartphone className="w-4 h-4 shrink-0" />
         {!collapsed && <span>Mobile view</span>}
-      </button>
+      </button>}
 
       <button
         onClick={doLogout}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, Star, Shield, ShieldCheck, Award, Loader2, X, MapPin, Sparkles, Users, Heart, LocateFixed } from 'lucide-react';
+import { Search, Star, Shield, ShieldCheck, Award, Loader2, X, MapPin, Sparkles, Users, Heart, LocateFixed, SlidersHorizontal } from 'lucide-react';
+import { SidePane } from '../../components/SidePane';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
@@ -125,12 +126,12 @@ export default function FindProviders() {
       {/* Header */}
       <div className="mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-blue-600 text-white flex items-center justify-center"><Users className="w-5 h-5" /></div>
-          <div>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-blue-600 text-white flex items-center justify-center shrink-0"><Users className="w-5 h-5" /></div>
+          <div className="min-w-0 flex-1">
             <h1 className="text-2xl md:text-3xl font-bold text-foreground">Find Providers</h1>
             <p className="text-sm text-muted-foreground">Browse verified pros — filter by service, rating, price, and credentials.</p>
           </div>
-          <div className="ml-auto text-sm text-muted-foreground" data-testid="providers-count">{loading ? '…' : `${results.length} found`}</div>
+          <div className="shrink-0 whitespace-nowrap text-xs sm:text-sm px-2.5 py-1 rounded-full bg-muted text-muted-foreground self-start" data-testid="providers-count">{loading ? '…' : `${results.length} found`}</div>
         </div>
       </div>
 
@@ -173,7 +174,9 @@ export default function FindProviders() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
-        <FiltersPanel filters={filters} set={set} origin={origin} setOrigin={setOrigin} />
+        <SidePane label="Filters" title="Filter providers" icon={SlidersHorizontal} side="left" testid="filters-pane">
+          <FiltersPanel filters={filters} set={set} origin={origin} setOrigin={setOrigin} />
+        </SidePane>
 
         <div>
           {loading ? (

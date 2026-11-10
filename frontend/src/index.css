@@ -101,84 +101,69 @@ code {
 }
 .pulse-dot { animation: pulse-dot 1.5s infinite; }
 
-/* ---------------- MOBILE VIEW MODE SHELL ---------------- */
-/* When view mode is "mobile", clamp app to a phone-sized viewport with a subtle device frame.
-   Below 768px we bypass the frame and use full width. */
-.mobile-viewport-wrapper {
-  min-height: 100vh;
-  background: linear-gradient(135deg, hsl(var(--muted) / 0.6) 0%, hsl(var(--background)) 50%, hsl(var(--muted) / 0.6) 100%);
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  padding: 0;
-}
+/* ---------------- TOUCH SHELL (phones + tablets < 1024px) ---------------- */
 .mobile-viewport-inner {
   width: 100%;
-  max-width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   background: hsl(var(--background));
   display: flex;
   flex-direction: column;
-  position: relative;
+  overflow-x: clip;
 }
-@media (min-width: 768px) {
-  .mobile-viewport-wrapper {
-    padding: 24px 0;
-  }
-  .mobile-viewport-inner {
-    max-width: 430px;
-    min-height: calc(100vh - 48px);
-    border-radius: 40px;
-    box-shadow: 0 24px 80px -20px rgba(0,0,0,0.35), 0 8px 32px -8px rgba(0,0,0,0.15);
-    overflow: hidden;
-    border: 10px solid hsl(var(--foreground) / 0.06);
-  }
-  .mobile-viewport-inner > header {
-    border-top-left-radius: 30px;
-    border-top-right-radius: 30px;
-  }
-}
-/* Hide the wide horizontal search on TopBar when in a narrow container */
-.mobile-viewport-inner input[type="text"] {
-  font-size: 16px; /* prevent iOS zoom */
-}
-/* Compact spacing helpers for content inside mobile shell */
-.mobile-viewport-inner .p-6 { padding: 1rem !important; }
-.mobile-viewport-inner .p-8 { padding: 1.25rem !important; }
-.mobile-viewport-inner .max-w-7xl { max-width: 100% !important; }
+html[data-view-mode="mobile"], html[data-view-mode="mobile"] body { overflow-x: hidden; }
+.mobile-viewport-inner main img,
+.mobile-viewport-inner main video,
+.mobile-viewport-inner main canvas { max-width: 100%; }
+.mobile-viewport-inner main table { min-width: 100%; }
+.mobile-viewport-inner main pre { white-space: pre-wrap; word-break: break-word; }
+.mobile-viewport-inner input, .mobile-viewport-inner textarea, .mobile-viewport-inner select { font-size: 16px; }
+.mobile-viewport-inner .max-w-7xl,
 .mobile-viewport-inner .max-w-6xl { max-width: 100% !important; }
-.mobile-viewport-inner .max-w-4xl { max-width: 100% !important; }
-.mobile-viewport-inner .max-w-2xl { max-width: 100% !important; }
-/* Hide wide-only sidebars in forum/marketplace when in mobile shell */
-.mobile-viewport-inner .lg\:grid-cols-\[240px_1fr_260px\] { grid-template-columns: 1fr !important; }
-.mobile-viewport-inner .lg\:grid-cols-\[240px_1fr\] { grid-template-columns: 1fr !important; }
-.mobile-viewport-inner aside.hidden.lg\:block { display: none !important; }
-.mobile-viewport-inner [data-testid="timesheet-page"] .md\:grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-.mobile-viewport-inner [data-testid="timesheet-page"] .lg\:grid-cols-3 { grid-template-columns: minmax(0, 1fr) !important; }
-.mobile-viewport-inner [data-testid="timesheet-page"] .lg\:col-span-2 { grid-column: auto !important; }
-.mobile-viewport-inner [data-testid="active-timers"] > div { flex-wrap: wrap; }
 
-/* Constrain dialogs, sheets, and popovers portalled to body when in mobile view mode.
-   Radix portals to document.body, so parent .mobile-viewport-inner CSS cannot reach them. */
-html[data-view-mode="mobile"] [role="dialog"]:not([data-state="closed"]) {
-  max-width: min(430px, calc(100vw - 16px)) !important;
-  width: calc(100vw - 16px) !important;
-}
-@media (min-width: 768px) {
-  html[data-view-mode="mobile"] [role="dialog"]:not([data-state="closed"]) {
-    max-width: 400px !important;
-    width: 400px !important;
-  }
-  /* Sheets stay full-width but capped */
-  html[data-view-mode="mobile"] [data-radix-popper-content-wrapper] {
-    max-width: 400px !important;
-  }
-}
-/* Dropdown/select content should also feel mobile */
-html[data-view-mode="mobile"] [role="listbox"],
-html[data-view-mode="mobile"] [data-radix-select-content],
-html[data-view-mode="mobile"] [data-radix-dropdown-menu-content] {
-  max-width: min(400px, calc(100vw - 16px)) !important;
+/* Floating pane trigger sits above the bottom nav */
+.side-pane-fab { bottom: calc(80px + env(safe-area-inset-bottom)); }
+
+@media (max-width: 639px) {
+  .mobile-viewport-inner .p-6 { padding: 1rem !important; }
+  .mobile-viewport-inner .p-8 { padding: 1.25rem !important; }
+  .mobile-viewport-inner main h1.text-4xl { font-size: 2rem; line-height: 2.4rem; }
+  .mobile-viewport-inner main h1.text-3xl { font-size: 1.6rem; line-height: 2rem; }
+  /* Long words / urls never push the page sideways */
+  .mobile-viewport-inner main { overflow-wrap: break-word; }
 }
 
+/* Horizontal tab strips / chip rows scroll instead of overflowing */
+.mobile-viewport-inner .overflow-x-auto { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.mobile-viewport-inner .overflow-x-auto::-webkit-scrollbar { display: none; }
 
+/* Dialogs portalled to body stay inside the screen */
+html[data-view-mode="mobile"] [role="dialog"]:not([data-state="closed"]):not(.side-pane-sheet):not([data-testid="mobile-menu-sheet"]) {
+  max-width: min(560px, calc(100vw - 16px)) !important;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+html[data-view-mode="mobile"] [data-radix-popper-content-wrapper] { max-width: calc(100vw - 16px) !important; }
+
+/* ---------------- DESKTOP PHONE-FRAME PREVIEW ---------------- */
+.phone-stage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 20%, hsl(var(--primary) / 0.08), transparent 40%),
+    hsl(var(--muted) / 0.5);
+}
+.phone-device {
+  width: 410px;
+  height: min(864px, calc(100vh - 48px));
+  border-radius: 48px;
+  border: 10px solid hsl(var(--foreground) / 0.9);
+  overflow: hidden;
+  background: hsl(var(--background));
+  box-shadow: 0 30px 90px -20px rgba(0, 0, 0, 0.4);
+}
+.phone-stage-side { display: flex; flex-direction: column; gap: 6px; }

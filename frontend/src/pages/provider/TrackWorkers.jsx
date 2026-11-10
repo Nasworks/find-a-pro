@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { MapPin, Users, Battery, Wifi } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import api from '../../lib/api';
+import { SidePane } from '../../components/SidePane';
 
 const createIcon = (color) => L.divIcon({
   className: 'worker-marker',
@@ -35,8 +36,9 @@ export default function TrackWorkers() {
   }));
 
   return (
-    <div className="h-[calc(100vh-64px)] flex">
-      <aside className="w-96 border-r border-border bg-card flex flex-col shrink-0 overflow-hidden">
+    <div className="h-[calc(100dvh-136px)] lg:h-[calc(100vh-64px)] flex">
+      <SidePane label="Workers" title="Team on the map" icon={Users} side="left" testid="workers-pane">
+      <aside className="w-full lg:w-96 lg:border-r border-border bg-card flex flex-col shrink-0 overflow-hidden">
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
             <MapPin className="w-4 h-4 text-primary" />
@@ -69,8 +71,9 @@ export default function TrackWorkers() {
           ))}
         </div>
       </aside>
+      </SidePane>
 
-      <div className="flex-1 relative">
+      <div className="flex-1 relative min-w-0">
         <MapContainer center={center} zoom={12} style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap contributors" />
           {withPositions.map((m) => (

@@ -4,6 +4,7 @@ import { Plus, MapPin, Clock, DollarSign } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import api from '../../lib/api';
+import { SidePane } from '../../components/SidePane';
 
 const statusColors = {
   open: 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300',
@@ -27,6 +28,7 @@ export default function MyJobPosts() {
   const [jobs, setJobs] = useState([]);
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState(null);
+  const [paneOpen, setPaneOpen] = useState(false);
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -78,7 +80,7 @@ export default function MyJobPosts() {
         <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
           <div className="space-y-2">
             {filtered.map((j) => (
-              <button key={j.job_id} onClick={() => setSelected(j)} className={`w-full text-left p-4 rounded-xl border transition-all ${selected?.job_id === j.job_id ? 'border-primary bg-primary/5 shadow-sm' : 'border-border bg-card hover:border-primary/40'}`}>
+              <button key={j.job_id} data-testid={`job-post-${j.job_id}`} onClick={() => { setSelected(j); setPaneOpen(true); }} className={`w-full text-left p-4 rounded-xl border transition-all ${selected?.job_id === j.job_id ? 'border-primary bg-primary/5 shadow-sm' : 'border-border bg-card hover:border-primary/40'}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="font-semibold text-foreground flex-1 truncate">{j.title}</div>
                   <Badge className={statusColors[j.status]}>{statusLabels[j.status]}</Badge>
@@ -97,9 +99,11 @@ export default function MyJobPosts() {
             ))}
           </div>
 
-          <div className="bg-card border border-border rounded-2xl p-6">
+          <SidePane title={selected?.title || 'Job details'} open={paneOpen} onOpenChange={setPaneOpen} hideTrigger testid="job-post-pane">
+          <div className="bg-card border border-border rounded-2xl p-6 min-w-0">
             {selected ? <JobDetailPanel job={selected} onRefresh={load} onOpen={() => navigate(`/jobs/${selected.job_id}`)} /> : <div className="text-muted-foreground text-center py-10">Select a job to view details</div>}
           </div>
+          </SidePane>
         </div>
       )}
     </div>

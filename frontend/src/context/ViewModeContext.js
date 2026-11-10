@@ -3,6 +3,8 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 const ViewModeContext = createContext(null);
 
 const STORAGE_KEY = 'dispatchr_view_mode';
+// Below this width (phones + tablets) the app always uses the touch layout.
+export const COMPACT_MAX = 1024;
 
 function detectDefault() {
   if (typeof window === 'undefined') return 'desktop';
@@ -10,21 +12,31 @@ function detectDefault() {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored === 'mobile' || stored === 'desktop') return stored;
   } catch { /* ignore */ }
-  // Auto: use mobile if the physical viewport is under 768px
   return window.innerWidth < 768 ? 'mobile' : 'desktop';
 }
 
+const inFrame = typeof window !== 'undefined' && window.self !== window.top;
+
 export function ViewModeProvider({ children }) {
   const [mode, setMode] = useState(() => detectDefault());
+  const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 1280 : window.innerWidth));
 
   useEffect(() => {
-    if (!mode) return;
-    try { window.localStorage.setItem(STORAGE_KEY, mode); } catch { /* ignore */ }
-    // Also mirror onto <html> for CSS-based tweaks if desired
-    document.documentElement.setAttribute('data-view-mode', mode);
-    if (mode === 'mobile') document.documentElement.classList.add('view-mode-mobile');
-    else document.documentElement.classList.remove('view-mode-mobile');
-  }, [mode]);
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const compact = width < COMPACT_MAX;
+
+  useEffect(() => {
+    if (!inFrame) {
+      try { window.localStorage.setItem(STORAGE_KEY, mode); } catch { /* ignore */ }
+    }
+    const effective = compact ? 'mobile' : 'desktop';
+    document.documentElement.setAttribute('data-view-mode', effective);
+    document.documentElement.classList.toggle('view-mode-mobile', compact);
+  }, [mode, compact]);
 
   const setViewMode = useCallback((next) => {
     if (next === 'mobile' || next === 'desktop') setMode(next);
@@ -34,8 +46,11 @@ export function ViewModeProvider({ children }) {
     setMode((prev) => (prev === 'mobile' ? 'desktop' : 'mobile'));
   }, []);
 
+  // framed = desktop-size screen previewing the phone layout inside a device frame
+  const framed = mode === 'mobile' && !compact && !inFrame;
+
   return (
-    <ViewModeContext.Provider value={{ mode, isMobile: mode === 'mobile', isDesktop: mode === 'desktop', setViewMode, toggle }}>
+    <ViewModeContext.Provider value={{ mode, isMobile: compact, compact, framed, inFrame, isDesktop: !compact, setViewMode, toggle }}>
       {children}
     </ViewModeContext.Provider>
   );

@@ -25,6 +25,9 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
 
+from html import escape  # noqa: E402
+from email_service import send_email, EMAIL_FROM_NAME  # noqa: E402
+
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
@@ -1251,6 +1254,8 @@ async def search_providers(
         for p in profiles:
             if p.get("latitude") is not None and p.get("longitude") is not None:
                 p["distance_km"] = round(_haversine_km(lat, lng, p["latitude"], p["longitude"]), 1)
+        # Providers who set a travel radius only appear to customers inside it
+        profiles = [p for p in profiles if not p.get("service_radius_km") or p.get("distance_km") is None or p["distance_km"] <= p["service_radius_km"]]
         if max_km is not None:
             profiles = [p for p in profiles if p.get("distance_km") is not None and p["distance_km"] <= max_km]
     # Sort
@@ -1306,6 +1311,11 @@ async def my_provider_profile(user=Depends(require_user)):
 async def update_provider(request: Request, user=Depends(require_user)):
     body = await request.json()
     allowed = {k: v for k, v in body.items() if k in ["business_name", "categories", "hourly_rate", "bio", "online", "plan"]}
+    if "service_radius_km" in body:
+        r = body["service_radius_km"]
+        if r is not None and (not isinstance(r, (int, float)) or not 1 <= r <= 500):
+            raise HTTPException(status_code=400, detail="service_radius_km must be between 1 and 500, or null for no limit")
+        allowed["service_radius_km"] = r
     await db.provider_profiles.update_one({"user_id": user["user_id"]}, {"$set": allowed}, upsert=True)
     p = await db.provider_profiles.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return p
@@ -1868,7 +1878,20 @@ TYPE_LINE_LABEL = {"work": "Labour", "travel": "Travel time", "materials": "Mate
 
 @api.get("/jobs/{job_id}/invoice")
 async def job_invoice(job_id: str, user=Depends(require_user)):
-    """Invoice = agreed quote + billable timesheet line items for the job."""
+    job, provider_id = await _invoice_context(job_id, user)
+    inv = await _compute_invoice(job, provider_id)
+    sent = await db.invoices.find_one({"job_id": job_id}, {"_id": 0})
+    # Customers see the last version the provider sent; providers see the live draft.
+    if sent and user["user_id"] != provider_id:
+        return {**sent, "is_sent_copy": True, "sent": _sent_meta(sent)}
+    return {**inv, "is_sent_copy": False, "sent": _sent_meta(sent) if sent else None}
+
+
+def _sent_meta(s: Dict[str, Any]) -> Dict[str, Any]:
+    return {"version": s.get("version"), "sent_at": s.get("sent_at"), "total": s.get("total"), "email_sent": s.get("email_sent")}
+
+
+async def _invoice_context(job_id: str, user: Dict[str, Any]):
     job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -1880,6 +1903,13 @@ async def job_invoice(job_id: str, user=Depends(require_user)):
     allowed = {job.get("client_id"), job.get("approver_id"), provider_id} - {None}
     if user["user_id"] not in allowed:
         raise HTTPException(status_code=403, detail="Not allowed")
+    return job, provider_id
+
+
+async def _compute_invoice(job: Dict[str, Any], provider_id: Optional[str]) -> Dict[str, Any]:
+    """Invoice = agreed quote + billable timesheet line items for the job."""
+    job_id = job["job_id"]
+    bid = await db.bids.find_one({"job_id": job_id, "status": {"$in": ["accepted", "completed"]}}, {"_id": 0})
     entries = await db.time_entries.find(
         {"job_id": job_id, "provider_id": provider_id, "billable": True, "ended_at": {"$ne": None}}, {"_id": 0}
     ).sort("started_at", 1).to_list(1000)
@@ -1917,6 +1947,75 @@ async def job_invoice(job_id: str, user=Depends(require_user)):
         "gst": gst,
         "total": round(subtotal + gst, 2),
     }
+
+
+def _invoice_email_html(inv: Dict[str, Any], client_name: str, provider_name: str, app_url: str) -> str:
+    rows = "".join(
+        f'<tr><td style="padding:8px 0;border-bottom:1px solid #eee">{escape(str(line["description"]))}</td>'
+        f'<td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right">${line["amount"]:.2f}</td></tr>'
+        for line in inv["lines"]
+    )
+    link = f'<p><a href="{escape(app_url)}/jobs/{escape(inv["job_id"])}" style="color:#3b82f6">View the job and invoice in {escape(EMAIL_FROM_NAME)}</a></p>' if app_url.startswith("https://") else ""
+    return (
+        '<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#111">'
+        f'<h2 style="margin:0 0 8px">Invoice for {escape(inv.get("job_title") or "your job")}</h2>'
+        f'<p>Hi {escape(client_name)}, {escape(provider_name)} has sent you an invoice (version {inv["version"]}).</p>'
+        f'<table role="presentation" width="100%" style="font-size:14px">{rows}'
+        f'<tr><td style="padding:8px 0">Subtotal</td><td style="text-align:right">${inv["subtotal"]:.2f}</td></tr>'
+        f'<tr><td style="padding:4px 0">GST ({int(inv["gst_rate"] * 100)}%)</td><td style="text-align:right">${inv["gst"]:.2f}</td></tr>'
+        f'<tr><td style="padding:8px 0;font-weight:bold">Total</td><td style="text-align:right;font-weight:bold">${inv["total"]:.2f}</td></tr></table>'
+        f'{link}'
+        f'<p style="font-size:12px;color:#888">Sent by {escape(EMAIL_FROM_NAME)}. We never ask for your password or card details by email.</p>'
+        '</td></tr></table>'
+    )
+
+
+@api.post("/jobs/{job_id}/invoice/send")
+async def send_job_invoice(job_id: str, request: Request, user=Depends(require_user)):
+    job, provider_id = await _invoice_context(job_id, user)
+    if user["user_id"] != provider_id:
+        raise HTTPException(status_code=403, detail="Only the job's provider can send the invoice")
+    inv = await _compute_invoice(job, provider_id)
+    if not inv["lines"]:
+        raise HTTPException(status_code=400, detail="Nothing to invoice yet")
+    prev = await db.invoices.find_one({"job_id": job_id}, {"_id": 0, "version": 1, "invoice_id": 1})
+    now = datetime.now(timezone.utc).isoformat()
+    inv.update({
+        "invoice_id": (prev or {}).get("invoice_id") or f"inv_{uuid.uuid4().hex[:10]}",
+        "version": ((prev or {}).get("version") or 0) + 1,
+        "client_id": job.get("client_id"),
+        "provider_name": user.get("name"),
+        "sent_at": now,
+        "status": "sent",
+    })
+    client = await db.users.find_one({"user_id": job.get("client_id")}, {"_id": 0, "password_hash": 0}) or {}
+    # Chat message in the provider <-> customer thread
+    thread = await db.threads.find_one({"participants": {"$all": [provider_id, job.get("client_id")]}}, {"_id": 0})
+    if not thread:
+        thread = Thread(
+            participants=[provider_id, job.get("client_id")],
+            participant_names={provider_id: user["name"], job.get("client_id"): client.get("name", "Customer")},
+            subject=job.get("title") or "Job",
+        ).dict()
+        await db.threads.insert_one(thread)
+    verb = "an updated invoice" if inv["version"] > 1 else "an invoice"
+    content = f"I've sent {verb} for \"{job.get('title')}\": ${inv['total']:.2f} incl. GST. Open the job to see the full breakdown."
+    msg = Message(thread_id=thread["thread_id"], sender_id=provider_id, content=content)
+    await db.messages.insert_one(msg.dict())
+    await db.threads.update_one({"thread_id": thread["thread_id"]}, {"$set": {"last_message": content, "last_message_at": msg.timestamp}})
+    # Email copy (non-fatal if it fails)
+    inv["email_sent"] = False
+    if client.get("email"):
+        try:
+            origin = request.headers.get("origin") or ""
+            html = _invoice_email_html(inv, client.get("name", "there"), user.get("name", "Your provider"), origin)
+            await send_email(to=client["email"], subject=f"Invoice for {job.get('title')} — ${inv['total']:.2f}", html=html)
+            inv["email_sent"] = True
+        except HTTPException as e:
+            logger.warning(f"Invoice email not sent for {job_id}: {e.detail}")
+    await db.invoices.update_one({"job_id": job_id}, {"$set": inv}, upsert=True)
+    inv.pop("_id", None)
+    return {**inv, "sent": _sent_meta(inv), "is_sent_copy": False, "thread_id": thread["thread_id"]}
 
 
 # ---------------- TRADES BOARD (provider-to-provider jobs) ----------------

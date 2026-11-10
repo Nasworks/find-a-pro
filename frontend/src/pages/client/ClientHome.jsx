@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import ServicePicker from '../../components/ServicePicker';
+import { SidePane } from '../../components/SidePane';
 import FindProviders from '../shared/FindProviders';
 import api from '../../lib/api';
 
@@ -203,6 +204,7 @@ export default function ClientHome() {
         </div>
       </div>
 
+      <SidePane label="How it works" icon={Sparkles} testid="home-info-pane">
       <aside className="space-y-4">
         <div className="bg-card border border-border rounded-2xl p-5">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">How it works</div>
@@ -237,6 +239,7 @@ export default function ClientHome() {
           <div className="mt-3 text-xs">© 2026 Pro Finder NZ. All rights reserved.</div>
         </div>
       </aside>
+      </SidePane>
 
       <ServicePicker
         open={pickerOpen}
