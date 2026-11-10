@@ -55,6 +55,8 @@ export default function FindProviders() {
     ...initialFilters,
     category: searchParams.get('category') || '',
     subcategory: searchParams.get('subcategory') || '',
+    category_name: searchParams.get('category_name') || '',
+    subcategory_name: searchParams.get('subcategory_name') || '',
     q: searchParams.get('q') || '',
   }));
   const [results, setResults] = useState([]);

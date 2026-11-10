@@ -6,6 +6,8 @@ import { Textarea } from '../../components/ui/textarea';
 import { Badge } from '../../components/ui/badge';
 import ServicePicker from '../../components/ServicePicker';
 import { SidePane } from '../../components/SidePane';
+import { useServiceDetect, DetectedAlternatives, providersLink } from '../../components/ServiceDetect';
+import { MediaUploader } from '../../components/MediaUploader';
 import FindProviders from '../shared/FindProviders';
 import api from '../../lib/api';
 
@@ -16,6 +18,9 @@ const RESIDENTIAL_QUICK = [
   { label: 'Interior painting', cat: 'painting-interior-finishes', sub: 'interior-painting', name: 'Interior Painting' },
   { label: 'Roof repair', cat: 'roofing-guttering', sub: 'roof-repairs', name: 'Roof Repairs' },
   { label: 'Handyman', cat: 'general-home-maintenance', sub: 'handyman-services', name: 'Handyman Services' },
+  { label: 'Lawn mowing', cat: 'gardening-lawn', sub: 'lawn-mowing', name: 'Lawn Mowing' },
+  { label: 'House clean', cat: 'cleaning', sub: 'regular-house-cleaning', name: 'Regular House Cleaning' },
+  { label: 'Landscaping', cat: 'landscaping', sub: 'landscape-design', name: 'Landscape Design' },
 ];
 
 const COMMERCIAL_QUICK = [
@@ -32,12 +37,22 @@ export default function ClientHome() {
   const [description, setDescription] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [picked, setPicked] = useState(null);
+  const [pickedManual, setPickedManual] = useState(false);
+  const [photos, setPhotos] = useState([]);
+  const [showMedia, setShowMedia] = useState(false);
   const navigate = useNavigate();
+  const detected = useServiceDetect(description, propertyType);
+
+  useEffect(() => {
+    if (pickedManual) return;
+    setPicked(detected.match ? { ...detected.match, auto: true } : null);
+  }, [detected, pickedManual]);
 
   const proceed = (mode) => {
     navigate('/post-job', {
       state: {
         description,
+        photos,
         propertyType,
         mode,
         ...(picked ? {
@@ -66,6 +81,7 @@ export default function ClientHome() {
   const changePropertyType = (t) => {
     setPropertyType(t);
     setPicked(null); // taxonomies differ
+    setPickedManual(false);
   };
 
   const quickTags = propertyType === 'commercial' ? COMMERCIAL_QUICK : RESIDENTIAL_QUICK;
@@ -125,24 +141,37 @@ export default function ClientHome() {
           <div className="flex items-center justify-between mt-3">
             <div className="flex gap-2">
               <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Voice input"><Mic className="w-4 h-4" /></button>
-              <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Add photo"><Camera className="w-4 h-4" /></button>
+              <button onClick={() => setShowMedia((s) => !s)} data-testid="clienthome-add-media" className={`p-2 rounded-lg transition-colors ${showMedia || photos.length ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-accent'}`} title="Add photos or videos"><Camera className="w-4 h-4" /></button>
+              {photos.length > 0 && <span className="self-center text-xs text-primary font-medium">{photos.length} attached</span>}
             </div>
             <Button onClick={() => proceed('quotes')} disabled={!description.trim()} className="h-10">
               <Search className="w-4 h-4 mr-2" /> Find a Pro
             </Button>
           </div>
+          {showMedia && <div className="mt-3"><MediaUploader value={photos} onChange={setPhotos} testid="clienthome-media" /></div>}
 
           <div className="mt-5 pt-5 border-t border-border">
             {picked && (
-              <div className="mb-4 flex items-center gap-3 p-3 rounded-xl border border-primary/40 bg-primary/5">
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0" style={{ backgroundColor: picked.category_color }}>
-                  <Wrench className="w-4 h-4" />
+              <div className="mb-4" data-testid="clienthome-picked">
+                <div className="flex items-center gap-3 p-3 rounded-xl border border-primary/40 bg-primary/5">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0" style={{ backgroundColor: picked.category_color }}>
+                    <Wrench className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      {picked.auto && <span className="inline-flex items-center gap-1 text-primary font-medium" data-testid="clienthome-auto-detected"><Sparkles className="w-3 h-3" /> Auto-detected ·</span>}
+                      <span className="truncate" data-testid="clienthome-picked-category">{picked.category_name}</span>
+                    </div>
+                    <div className="text-sm font-semibold text-foreground truncate" data-testid="clienthome-picked-sub">{picked.subcategory_name}</div>
+                  </div>
+                  <button onClick={() => { setPicked(null); setPickedManual(true); }} data-testid="clienthome-picked-clear" className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-accent">Clear</button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs text-muted-foreground">{picked.category_name}</div>
-                  <div className="text-sm font-semibold text-foreground truncate">{picked.subcategory_name}</div>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  {picked.auto && <DetectedAlternatives alternatives={detected.alternatives} onPick={(a) => { setPicked(a); setPickedManual(true); }} />}
+                  <button onClick={() => navigate(providersLink(picked))} data-testid="clienthome-see-pros" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                    <Users className="w-3.5 h-3.5" /> See {picked.category_name} pros
+                  </button>
                 </div>
-                <button onClick={() => setPicked(null)} className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-accent">Clear</button>
               </div>
             )}
             <div className="flex flex-wrap gap-2">
@@ -153,7 +182,7 @@ export default function ClientHome() {
               ))}
             </div>
             <button data-testid="clienthome-browse-services" onClick={() => setPickerOpen(true)} className="mt-4 inline-flex items-center gap-2 text-sm text-primary font-medium hover:underline">
-              <Layers className="w-4 h-4" /> Browse all {propertyType === 'commercial' ? '100+ commercial' : '120+ residential'} services
+              <Layers className="w-4 h-4" /> Browse all {propertyType === 'commercial' ? '120+ commercial' : '150+ residential'} services
             </button>
           </div>
         </div>
@@ -246,7 +275,7 @@ export default function ClientHome() {
         onOpenChange={setPickerOpen}
         serviceType={propertyType}
         value={picked ? { category_id: picked.category_id, subcategory_id: picked.subcategory_id } : undefined}
-        onSelect={(sel) => setPicked(sel)}
+        onSelect={(sel) => { setPicked(sel); setPickedManual(true); }}
       />
     </div>
       )}

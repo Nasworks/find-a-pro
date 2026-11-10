@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../componen
 import { Checkbox } from '../../components/ui/checkbox';
 import api from '../../lib/api';
 import { JobInvoice } from '../../components/JobInvoice';
+import { MediaThumb, mediaSrc, isVideo } from '../../components/MediaUploader';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -139,6 +140,16 @@ export default function JobDetail() {
                 </div>
               </div>
             )}
+            {job.photos?.length > 0 && (
+              <div className="bg-card border border-border rounded-2xl p-5" data-testid="job-overview-media">
+                <h3 className="font-semibold text-foreground mb-3">Photos & videos</h3>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {job.photos.slice(0, 8).map((p) => (
+                    <button key={p} type="button" onClick={() => setTab('documents')} className="aspect-square rounded-lg overflow-hidden bg-muted"><MediaThumb url={p} /></button>
+                  ))}
+                </div>
+              </div>
+            )}
             {job.status !== 'open' && <JobInvoice jobId={job.job_id} hideWhenEmpty />}
           </div>
           <aside className="space-y-4">
@@ -211,10 +222,12 @@ export default function JobDetail() {
 
       {tab === 'documents' && (
         <div className="mt-6 bg-card border border-border rounded-2xl p-6">
-          <h3 className="font-semibold text-foreground mb-3">Job documents</h3>
+          <h3 className="font-semibold text-foreground mb-3">Photos, videos & documents</h3>
           {job.photos?.length ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {job.photos.map((p) => <img key={p} src={p} className="w-full h-32 object-cover rounded-lg" alt="" />)}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="job-media-gallery">
+              {job.photos.map((p) => (isVideo(p)
+                ? <video key={p} src={mediaSrc(p)} controls playsInline className="w-full h-32 object-cover rounded-lg bg-black" />
+                : <a key={p} href={mediaSrc(p)} target="_blank" rel="noreferrer"><img src={mediaSrc(p)} className="w-full h-32 object-cover rounded-lg" alt="" /></a>))}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">No documents attached to this job yet. Providers may attach quotes, plans, or product spec sheets in their bids.</p>

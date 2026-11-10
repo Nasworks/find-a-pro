@@ -27,6 +27,7 @@ JWT_ALG = "HS256"
 
 from html import escape  # noqa: E402
 from email_service import send_email, EMAIL_FROM_NAME  # noqa: E402
+from storage_service import init_storage, put_object, get_object, APP_NAME  # noqa: E402
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -1180,6 +1181,19 @@ async def nearby_providers(category: Optional[str] = None):
 
 
 # ---------------- PROVIDER DIRECTORY (customer-facing browse & profile) ----------------
+# Taxonomy category id -> older provider category slugs still stored on profiles
+CATEGORY_ALIASES: Dict[str, List[str]] = {
+    "plumbing-gas": ["plumbing"],
+    "heating-cooling-ventilation": ["hvac"], "hvac-mechanical": ["hvac"],
+    "general-home-maintenance": ["handyman"], "building-maintenance": ["handyman"],
+    "painting-interior-finishes": ["painting"], "interior-finishes": ["painting"],
+    "roofing-guttering": ["roofing"], "roofing-waterproofing": ["roofing"],
+    "gardening-lawn": ["lawn", "gardening"], "grounds-maintenance": ["lawn", "gardening"],
+    "landscaping": ["lawn", "landscaping"], "commercial-landscaping": ["lawn", "landscaping"],
+    "cleaning": ["cleaning"], "commercial-cleaning": ["cleaning"],
+}
+
+
 def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     import math
     r1, r2 = math.radians(lat1), math.radians(lat2)
@@ -1217,17 +1231,21 @@ async def search_providers(
 ):
     """Customer-facing provider directory search. Filter + sort providers by category/subcategory/etc."""
     query: Dict[str, Any] = {}
+    and_: List[Dict[str, Any]] = []
     if category:
-        query["categories"] = category
+        query["categories"] = {"$in": [category, *CATEGORY_ALIASES.get(category, [])]}
     if subcategory:
-        query["subcategories"] = subcategory
+        # Providers with no listed subcategories cover their whole category
+        and_.append({"$or": [{"subcategories": subcategory}, {"subcategories": {"$in": [[], None]}}, {"subcategories": {"$exists": False}}]})
     if verified_only:
         query["verified"] = True
     if q:
-        query["$or"] = [
+        and_.append({"$or": [
             {"business_name": {"$regex": q, "$options": "i"}},
             {"bio": {"$regex": q, "$options": "i"}},
-        ]
+        ]})
+    if and_:
+        query["$and"] = and_
     profiles = await db.provider_profiles.find(query, {"_id": 0}).to_list(500)
     # Hide freshly-registered empty providers from the customer catalog
     # (require a bio OR at least one review to be visible).
@@ -2018,6 +2036,105 @@ async def send_job_invoice(job_id: str, request: Request, user=Depends(require_u
     return {**inv, "sent": _sent_meta(inv), "is_sent_copy": False, "thread_id": thread["thread_id"]}
 
 
+# ---------------- MEDIA UPLOADS (chunked → object storage) ----------------
+UPLOAD_TMP = Path("/tmp/pf_uploads")
+MAX_IMAGE_BYTES = 25 * 1024 * 1024
+MAX_VIDEO_BYTES = 200 * 1024 * 1024
+MAX_CHUNK_BYTES = 6 * 1024 * 1024
+
+
+class UploadInit(BaseModel):
+    filename: str
+    content_type: str
+    size: int
+
+
+@api.post("/uploads/init")
+async def upload_init(payload: UploadInit, user=Depends(require_user)):
+    ct = (payload.content_type or "").lower()
+    if not (ct.startswith("image/") or ct.startswith("video/")):
+        raise HTTPException(status_code=400, detail="Only photos and videos can be uploaded")
+    limit = MAX_VIDEO_BYTES if ct.startswith("video/") else MAX_IMAGE_BYTES
+    if payload.size <= 0 or payload.size > limit:
+        raise HTTPException(status_code=400, detail=f"File too large (max {limit // (1024 * 1024)} MB)")
+    upload_id = f"up_{uuid.uuid4().hex[:16]}"
+    (UPLOAD_TMP / upload_id).mkdir(parents=True, exist_ok=True)
+    await db.uploads.insert_one({"upload_id": upload_id, "user_id": user["user_id"], "filename": payload.filename[:200],
+                                 "content_type": ct, "size": payload.size, "created_at": datetime.now(timezone.utc).isoformat()})
+    return {"upload_id": upload_id, "chunk_size": 5 * 1024 * 1024}
+
+
+async def _own_upload(upload_id: str, user: Dict[str, Any]) -> Dict[str, Any]:
+    up = await db.uploads.find_one({"upload_id": upload_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not up:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    return up
+
+
+@api.put("/uploads/{upload_id}/chunk")
+async def upload_chunk(upload_id: str, index: int, request: Request, user=Depends(require_user)):
+    await _own_upload(upload_id, user)
+    data = await request.body()
+    if not data or len(data) > MAX_CHUNK_BYTES or index < 0 or index > 1000:
+        raise HTTPException(status_code=400, detail="Invalid chunk")
+    (UPLOAD_TMP / upload_id / f"{index:05d}").write_bytes(data)
+    return {"ok": True, "index": index}
+
+
+@api.post("/uploads/{upload_id}/complete")
+async def upload_complete(upload_id: str, total_chunks: int, user=Depends(require_user)):
+    import asyncio
+    import re as _re
+    import shutil
+    up = await _own_upload(upload_id, user)
+    folder = UPLOAD_TMP / upload_id
+    parts = [folder / f"{i:05d}" for i in range(total_chunks)]
+    if total_chunks <= 0 or not all(p.exists() for p in parts):
+        raise HTTPException(status_code=400, detail="Missing chunks — please retry the upload")
+    data = b"".join(p.read_bytes() for p in parts)
+    if len(data) != up["size"]:
+        raise HTTPException(status_code=400, detail="Upload incomplete — please retry")
+    ext = up["filename"].rsplit(".", 1)[-1].lower() if "." in up["filename"] else up["content_type"].split("/")[-1]
+    ext = _re.sub(r"[^a-z0-9]", "", ext)[:8] or "bin"
+    path = f"{APP_NAME}/uploads/{user['user_id']}/{uuid.uuid4()}.{ext}"
+    try:
+        result = await asyncio.to_thread(put_object, path, data, up["content_type"])
+    except Exception as e:
+        logger.error(f"Storage upload failed: {e}")
+        raise HTTPException(status_code=502, detail="Could not store the file, please try again")
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    file_id = f"file_{uuid.uuid4().hex[:16]}"
+    safe_name = _re.sub(r"[^A-Za-z0-9._-]", "_", up["filename"])[:80] or f"file.{ext}"
+    await db.files.insert_one({"file_id": file_id, "storage_path": result["path"], "original_filename": up["filename"],
+                               "content_type": up["content_type"], "size": len(data), "owner_id": user["user_id"],
+                               "is_deleted": False, "created_at": datetime.now(timezone.utc).isoformat()})
+    await db.uploads.delete_one({"upload_id": upload_id})
+    return {"file_id": file_id, "url": f"/api/files/{file_id}/{safe_name}", "content_type": up["content_type"], "name": up["filename"], "size": len(data)}
+
+
+@api.get("/files/{file_id}/{filename}")
+async def get_file(file_id: str, filename: str, request: Request, user=Depends(require_user)):
+    import asyncio
+    rec = await db.files.find_one({"file_id": file_id, "is_deleted": False}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="File not found")
+    data, _ = await asyncio.to_thread(get_object, rec["storage_path"])
+    headers = {"Cache-Control": "private, max-age=86400", "Accept-Ranges": "bytes"}
+    rng = request.headers.get("range")
+    if rng and rng.startswith("bytes="):
+        # Byte ranges so phone browsers (iOS Safari) can stream videos
+        start_s, _, end_s = rng[6:].split(",")[0].partition("-")
+        size = len(data)
+        start = int(start_s) if start_s else max(0, size - int(end_s or 0))
+        end = min(int(end_s), size - 1) if (end_s and start_s) else size - 1
+        if start >= size or start > end:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+        return Response(content=data[start:end + 1], status_code=206, media_type=rec["content_type"], headers=headers)
+    return Response(content=data, media_type=rec["content_type"], headers=headers)
+
+
 # ---------------- TRADES BOARD (provider-to-provider jobs) ----------------
 class TradeJob(BaseModel):
     trade_job_id: str = Field(default_factory=lambda: f"tj_{uuid.uuid4().hex[:10]}")
@@ -2460,6 +2577,22 @@ RESIDENTIAL_TAXONOMY = [
         "Waterproofing", "Asbestos Removal (Licensed)", "Demolition",
         "Structural Repairs", "Welding & Metal Fabrication", "Accessibility Modifications",
     ]},
+    {"id": "gardening-lawn", "name": "Gardening & Lawn", "icon": "Flower2", "color": "#22C55E", "subs": [
+        "Lawn Mowing", "Lawn Care & Fertilising", "New Lawns & Turf Laying", "Garden Maintenance",
+        "Weeding & Mulching", "Hedge Trimming", "Pruning", "Tree Felling & Removal",
+        "Stump Grinding", "Planting & Garden Makeovers", "Green Waste Removal", "Garden Irrigation",
+    ]},
+    {"id": "landscaping", "name": "Landscaping", "icon": "Trees", "color": "#15803D", "subs": [
+        "Landscape Design", "Landscape Construction", "Garden Beds & Edging", "Paving & Pathways",
+        "Landscape Retaining Walls", "Outdoor Living Areas", "Artificial Turf", "Water Features",
+        "Garden Lighting", "Section Drainage", "Section Clearing",
+    ]},
+    {"id": "cleaning", "name": "Cleaning", "icon": "SprayCan", "color": "#06B6D4", "subs": [
+        "Regular House Cleaning", "Deep Cleaning", "End of Tenancy Cleaning", "Move In / Move Out Cleaning",
+        "Carpet Cleaning", "Upholstery Cleaning", "Window Cleaning", "Oven Cleaning",
+        "Water Blasting", "House Washing", "Gutter Cleaning", "Roof Cleaning & Moss Treatment",
+        "After-Builders Cleaning", "Mould Removal",
+    ]},
 ]
 
 COMMERCIAL_TAXONOMY = [
@@ -2525,6 +2658,22 @@ COMMERCIAL_TAXONOMY = [
         "Warehouse Fit-outs", "Interior Refurbishments", "Building Upgrades",
         "Accessibility Upgrades",
     ]},
+    {"id": "commercial-cleaning", "name": "Commercial Cleaning", "icon": "SprayCan", "color": "#06B6D4", "subs": [
+        "Office Cleaning", "Retail Cleaning", "Medical & Healthcare Cleaning", "Industrial & Warehouse Cleaning",
+        "School & Childcare Cleaning", "Commercial Window Cleaning", "High-Rise Window Cleaning",
+        "Carpet & Hard Floor Care", "Builders' Clean", "Commercial Water Blasting",
+        "Washroom Hygiene Services", "Body Corporate Cleaning",
+    ]},
+    {"id": "grounds-maintenance", "name": "Gardening & Grounds Maintenance", "icon": "Flower2", "color": "#22C55E", "subs": [
+        "Commercial Lawn Mowing", "Grounds Maintenance Contracts", "Hedge & Shrub Maintenance",
+        "Tree Care & Arborist", "Weed Control & Spraying", "Commercial Green Waste Removal",
+        "Irrigation Maintenance", "Interior Plant Care",
+    ]},
+    {"id": "commercial-landscaping", "name": "Landscaping", "icon": "Trees", "color": "#15803D", "subs": [
+        "Commercial Landscape Design", "Commercial Landscape Construction", "Paving & Hardscaping",
+        "Car Park Landscaping", "Commercial Retaining Walls", "Commercial Artificial Turf",
+        "Outdoor & Amenity Lighting", "Stormwater & Drainage",
+    ]},
 ]
 
 
@@ -2586,6 +2735,142 @@ async def taxonomy_by_type(service_type: str):
     if service_type == "residential":
         return _taxonomy_payload(RESIDENTIAL_TAXONOMY)
     raise HTTPException(status_code=404, detail="Unknown service_type. Use 'residential' or 'commercial'.")
+
+
+# (keywords, residential sub, commercial sub) — drives free-text job type detection
+SERVICE_KEYWORDS: List[tuple] = [
+    (["tap", "faucet", "dripping"], "Tap & Toilet Repairs", "Commercial Plumbing"),
+    (["toilet", "cistern", "loo"], "Tap & Toilet Repairs", "Bathrooms & Amenities"),
+    (["leak", "leaking", "burst pipe", "water leak"], "Leak Repairs", "Pipework"),
+    (["drain", "blocked", "blockage", "clogged", "sewer"], "Blocked Drains", "Drain Repairs"),
+    (["hot water", "cylinder", "califont"], "Hot Water Systems", "Hot Water Systems"),
+    (["gas", "gas fitting", "gas bottle", "gas hob"], "Gas Fitting & Gas Appliances", "Gas Fitting"),
+    (["plumber", "plumbing", "pipe"], "Residential Plumbing", "Commercial Plumbing"),
+    (["electrician", "sparky", "wiring", "rewire"], "New Wiring & Rewiring", "Commercial Electrical"),
+    (["power point", "socket", "switch", "outlet"], "Power Points & Switches", "Power & Data"),
+    (["light", "lights", "lighting", "downlight", "led"], "Lighting Installation", "Lighting Installation & Upgrades"),
+    (["switchboard", "fuse"], "Switchboard Upgrades", "Switchboard Upgrades"),
+    (["ev charger", "car charger"], "EV Charger Installation", "EV Charger Installation"),
+    (["smoke alarm"], "Smoke Alarms", "Fire Alarms"),
+    (["tripping", "no power", "power out", "electrical fault"], "Fault Finding & Repairs", "Electrical Fault Finding"),
+    (["heat pump", "heatpump"], "Heat Pump Installation", "Heat Pumps"),
+    (["air con", "aircon", "air conditioning", "air conditioner"], "Air Conditioning", "Commercial Air Conditioning"),
+    (["extractor", "ventilation", "condensation"], "Bathroom Extractor Fans", "Ventilation Systems"),
+    (["roof", "roofer", "roofing", "tiles cracked"], "Roof Repairs", "Roof Repairs"),
+    (["gutter", "gutters", "spouting", "downpipe"], "Gutter Repairs", "Gutters & Downpipes"),
+    (["deck", "decking"], "Deck Construction", "Commercial Carpentry"),
+    (["fence", "fencing"], "Fencing", "Fencing & Gates"),
+    (["pergola"], "Pergolas", "Commercial Carpentry"),
+    (["door", "doors"], "Doors", "Doors & Hardware"),
+    (["cabinet", "cabinetry", "joinery"], "Built-in Cabinets", "Cabinetry"),
+    (["carpenter", "builder", "carpentry"], "General Carpentry", "Commercial Carpentry"),
+    (["paint", "painter", "painting", "repaint"], "Interior Painting", "Painting"),
+    (["exterior paint", "paint the house", "outside of the house"], "Exterior Painting", "Painting"),
+    (["gib", "plasterboard"], "Gib Installation", "Gib Installation"),
+    (["plaster", "plastering"], "Plastering", "Plastering"),
+    (["wallpaper"], "Wallpaper Installation", "Painting"),
+    (["carpet laying", "new carpet"], "Carpet Installation", "Flooring"),
+    (["tile", "tiles", "tiling", "tiler"], "Floor & Wall Tiling", "Tiling"),
+    (["floor", "flooring", "floorboards", "laminate", "vinyl"], "Floor Repairs", "Flooring"),
+    (["kitchen renovation", "new kitchen", "kitchen reno"], "Kitchen Renovations", "Hospitality Fit-outs"),
+    (["bathroom renovation", "bathroom reno", "new bathroom"], "Bathroom Renovations", "Bathrooms & Amenities"),
+    (["renovation", "extension", "alteration"], "Home Alterations", "Office Renovations"),
+    (["driveway", "concrete"], "Driveways", "Concrete Repairs"),
+    (["excavation", "digger"], "Excavation", "Concrete Repairs"),
+    (["window", "glass", "glazing", "double glazing"], "Glass Replacement", "Glass Replacement"),
+    (["cctv", "security camera", "camera"], "CCTV Installation", "CCTV Installation"),
+    (["alarm", "burglar"], "Alarm Systems", "Alarm Systems"),
+    (["wifi", "wi-fi", "internet", "network"], "Wi-Fi Installation", "Wi-Fi Installation"),
+    (["tv mount", "mount tv", "tv on the wall"], "TV Wall Mounting", "Communications Infrastructure"),
+    (["solar", "solar panel"], "Solar Panel Installation", "Commercial Solar"),
+    (["battery"], "Home Battery Installation", "Battery Storage"),
+    (["pool", "swimming pool"], "Swimming Pool Installation", "Building Upgrades"),
+    (["spa", "hot tub"], "Spa Pool Installation", "Building Upgrades"),
+    (["insulation", "insulate"], "Ceiling Insulation", "Building Upgrades"),
+    (["dishwasher"], "Dishwashers", "Kitchens"),
+    (["oven install", "cooktop", "hob"], "Ovens & Cooktops", "Kitchens"),
+    (["washing machine"], "Washing Machines", "Commercial Plumbing"),
+    (["rangehood"], "Rangehoods", "Extraction Systems"),
+    (["asbestos"], "Asbestos Removal (Licensed)", "Building Repairs"),
+    (["demolition", "demolish"], "Demolition", "Building Alterations"),
+    (["welding", "welder", "metal"], "Welding & Metal Fabrication", "Building Repairs"),
+    (["handyman", "odd jobs", "fix", "repair", "broken"], "Handyman Services", "Commercial Handyman"),
+    # Gardening & lawn
+    (["mow", "mowing", "lawn", "grass", "lawns"], "Lawn Mowing", "Commercial Lawn Mowing"),
+    (["fertilise", "fertilize", "lawn care", "patchy lawn"], "Lawn Care & Fertilising", "Grounds Maintenance Contracts"),
+    (["turf", "new lawn", "lawn seed", "re-sow"], "New Lawns & Turf Laying", "Grounds Maintenance Contracts"),
+    (["garden", "gardener", "gardening", "tidy up"], "Garden Maintenance", "Grounds Maintenance Contracts"),
+    (["weed", "weeds", "weeding", "mulch", "bark"], "Weeding & Mulching", "Weed Control & Spraying"),
+    (["hedge", "hedges"], "Hedge Trimming", "Hedge & Shrub Maintenance"),
+    (["prune", "pruning", "shrub"], "Pruning", "Hedge & Shrub Maintenance"),
+    (["tree", "trees", "arborist", "felling"], "Tree Felling & Removal", "Tree Care & Arborist"),
+    (["stump"], "Stump Grinding", "Tree Care & Arborist"),
+    (["planting", "plants", "flower", "flowers", "vege garden"], "Planting & Garden Makeovers", "Interior Plant Care"),
+    (["green waste", "garden waste", "rubbish"], "Green Waste Removal", "Commercial Green Waste Removal"),
+    (["irrigation", "sprinkler", "watering"], "Garden Irrigation", "Irrigation Maintenance"),
+    # Landscaping
+    (["landscape", "landscaping", "landscaper"], "Landscape Design", "Commercial Landscape Design"),
+    (["garden bed", "edging", "raised bed"], "Garden Beds & Edging", "Commercial Landscape Construction"),
+    (["paving", "pavers", "path", "pathway"], "Paving & Pathways", "Paving & Hardscaping"),
+    (["retaining wall"], "Landscape Retaining Walls", "Commercial Retaining Walls"),
+    (["patio", "courtyard", "outdoor area"], "Outdoor Living Areas", "Commercial Landscape Construction"),
+    (["artificial turf", "artificial grass", "fake grass"], "Artificial Turf", "Commercial Artificial Turf"),
+    (["water feature", "pond", "fountain"], "Water Features", "Commercial Landscape Construction"),
+    (["garden lighting", "outdoor lighting"], "Garden Lighting", "Outdoor & Amenity Lighting"),
+    (["drainage", "soggy", "waterlogged", "stormwater"], "Section Drainage", "Stormwater & Drainage"),
+    (["section clearing", "clear the section", "overgrown", "dirt", "earth"], "Section Clearing", "Commercial Landscape Construction"),
+    # Cleaning
+    (["clean", "cleaner", "cleaning", "housekeeping"], "Regular House Cleaning", "Office Cleaning"),
+    (["deep clean", "spring clean"], "Deep Cleaning", "Builders' Clean"),
+    (["end of tenancy", "bond clean", "vacate clean", "end of lease"], "End of Tenancy Cleaning", "Body Corporate Cleaning"),
+    (["moving out", "move out", "moving in", "move in"], "Move In / Move Out Cleaning", "Office Cleaning"),
+    (["carpet clean", "carpet shampoo", "stain"], "Carpet Cleaning", "Carpet & Hard Floor Care"),
+    (["couch", "sofa", "upholstery"], "Upholstery Cleaning", "Carpet & Hard Floor Care"),
+    (["window clean", "windows cleaned", "clean windows"], "Window Cleaning", "Commercial Window Cleaning"),
+    (["oven clean"], "Oven Cleaning", "Office Cleaning"),
+    (["water blast", "waterblast", "pressure wash", "water blasting"], "Water Blasting", "Commercial Water Blasting"),
+    (["house wash", "soft wash", "wash the house"], "House Washing", "Commercial Water Blasting"),
+    (["gutter clean", "clean gutters", "clean the gutters"], "Gutter Cleaning", "Commercial Water Blasting"),
+    (["moss", "lichen", "roof clean"], "Roof Cleaning & Moss Treatment", "Commercial Water Blasting"),
+    (["builders clean", "after builders", "construction clean"], "After-Builders Cleaning", "Builders' Clean"),
+    (["mould", "mold", "mildew"], "Mould Removal", "Office Cleaning"),
+    (["office clean", "office cleaning"], "Regular House Cleaning", "Office Cleaning"),
+    (["washroom", "sanitary", "hygiene"], "Deep Cleaning", "Washroom Hygiene Services"),
+]
+
+
+def _detect_service(text: str, service_type: str) -> List[Dict[str, Any]]:
+    import re
+    taxonomy = COMMERCIAL_TAXONOMY if service_type == "commercial" else RESIDENTIAL_TAXONOMY
+    t = " " + re.sub(r"[^a-z0-9\s-]", " ", text.lower()) + " "
+    words = set(re.findall(r"[a-z]{4,}", t))
+    by_name = {s["name"]: (c, s) for c in taxonomy for s in c["subcategories"]}
+    scores: Dict[str, float] = {}
+    for phrases, res_sub, com_sub in SERVICE_KEYWORDS:
+        name = com_sub if service_type == "commercial" else res_sub
+        if name not in by_name:
+            continue
+        for ph in phrases:
+            if re.search(rf"\b{re.escape(ph)}\b", t):
+                scores[name] = scores.get(name, 0) + (1 if res_sub == "Handyman Services" else 2 + len(ph.split()))
+    for name in by_name:
+        for w in re.findall(r"[a-z]{4,}", name.lower()):
+            if w in words or w.rstrip("s") in words:
+                scores[name] = scores.get(name, 0) + 1
+    ranked = sorted(scores.items(), key=lambda kv: -kv[1])[:3]
+    out = []
+    for name, sc in ranked:
+        c, s = by_name[name]
+        out.append({"category_id": c["id"], "category_name": c["name"], "category_icon": c["icon"], "category_color": c["color"],
+                    "subcategory_id": s["id"], "subcategory_name": s["name"], "score": sc})
+    return out
+
+
+@api.get("/services/detect")
+async def detect_service(text: str, service_type: str = "residential"):
+    """Guess the job category/subcategory from a free-text job description."""
+    matches = _detect_service(text[:1000], service_type)
+    return {"match": matches[0] if matches else None, "alternatives": matches[1:]}
 
 
 @api.get("/services/commercial-taxonomy/{category_id}")
@@ -3281,6 +3566,10 @@ async def seed_data():
 
 @app.on_event("startup")
 async def on_startup():
+    try:
+        init_storage()
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Storage init failed: {e}")
     await seed_data()
     await seed_demo_accounts()
     logging.info("Pro Finder NZ startup complete")

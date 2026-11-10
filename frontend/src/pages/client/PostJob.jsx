@@ -9,6 +9,8 @@ import { Label } from '../../components/ui/label';
 import { RadioGroup, RadioGroupItem } from '../../components/ui/radio-group';
 import { Badge } from '../../components/ui/badge';
 import ServicePicker from '../../components/ServicePicker';
+import { useServiceDetect, DetectedAlternatives } from '../../components/ServiceDetect';
+import { MediaUploader } from '../../components/MediaUploader';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/api';
 import { toast } from 'sonner';
@@ -53,10 +55,30 @@ export default function PostJob() {
     budget_max: '',
     urgency: 'flexible',
     mode: preset.mode || 'quotes',
-    photos: [],
+    photos: preset.photos || [],
   });
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  // Auto-detect the service from title + description until the user picks one manually
+  const [manualPick, setManualPick] = useState(false);
+  const [autoPicked, setAutoPicked] = useState(false);
+  const detected = useServiceDetect(`${form.title} ${form.description}`, form.service_type);
+  useEffect(() => {
+    if (manualPick || !detected.match) return;
+    if (form.category && !autoPicked) return; // keep a preset the user arrived with
+    applyService(detected.match);
+    setAutoPicked(true);
+  }, [detected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const applyService = (sel) => setForm((f) => ({
+    ...f,
+    category: sel.category_id,
+    category_name: sel.category_name,
+    category_icon: sel.category_icon,
+    category_color: sel.category_color,
+    subcategory: sel.subcategory_id,
+    subcategory_name: sel.subcategory_name,
+  }));
 
   const changeServiceType = (t) => {
     // Reset category when switching types (taxonomies differ)
@@ -73,6 +95,8 @@ export default function PostJob() {
   };
 
   const handleServicePicked = (sel) => {
+    setManualPick(true);
+    setAutoPicked(false);
     setForm((f) => ({
       ...f,
       category: sel.category_id,
@@ -220,7 +244,7 @@ export default function PostJob() {
                   <CategoryIcon className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-muted-foreground">{form.category_name}</div>
+                  <div className="text-xs text-muted-foreground">{autoPicked && <span className="text-primary font-medium" data-testid="post-job-auto-detected">Auto-detected · </span>}{form.category_name}</div>
                   <div className="text-sm font-semibold text-foreground truncate">{form.subcategory_name || 'Any service in this category'}</div>
                 </div>
                 <Badge variant="outline" className="ml-auto text-xs">Change</Badge>
@@ -238,6 +262,7 @@ export default function PostJob() {
               </>
             )}
           </button>
+          {autoPicked && <DetectedAlternatives alternatives={detected.alternatives} onPick={(a) => { applyService(a); setManualPick(true); setAutoPicked(false); }} />}
         </div>
 
         <div>
@@ -248,6 +273,13 @@ export default function PostJob() {
         <div>
           <Label>Description</Label>
           <Textarea data-testid="post-job-description" value={form.description} onChange={(e) => update('description', e.target.value)} rows={4} placeholder="Describe the problem or work needed" required className="mt-1.5" />
+        </div>
+
+        <div>
+          <Label>Photos & videos <span className="text-muted-foreground font-normal">(optional)</span></Label>
+          <div className="mt-1.5">
+            <MediaUploader value={form.photos} onChange={(v) => update('photos', v)} testid="post-job-media" />
+          </div>
         </div>
 
         <div>
