@@ -1313,8 +1313,8 @@ async def update_provider(request: Request, user=Depends(require_user)):
     allowed = {k: v for k, v in body.items() if k in ["business_name", "categories", "hourly_rate", "bio", "online", "plan"]}
     if "service_radius_km" in body:
         r = body["service_radius_km"]
-        if r is not None and (not isinstance(r, (int, float)) or not 1 <= r <= 500):
-            raise HTTPException(status_code=400, detail="service_radius_km must be between 1 and 500, or null for no limit")
+        if r is not None and (isinstance(r, bool) or not isinstance(r, (int, float)) or not 1 <= r <= 200):
+            raise HTTPException(status_code=400, detail="service_radius_km must be between 1 and 200, or null for no limit")
         allowed["service_radius_km"] = r
     await db.provider_profiles.update_one({"user_id": user["user_id"]}, {"$set": allowed}, upsert=True)
     p = await db.provider_profiles.find_one({"user_id": user["user_id"]}, {"_id": 0})

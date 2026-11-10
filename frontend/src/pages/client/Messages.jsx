@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 export default function Messages() {
   const [threads, setThreads] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const { user } = useAuth();
@@ -48,7 +49,7 @@ export default function Messages() {
           <div className="p-3 border-b border-border">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input placeholder="Search conversations..." className="w-full pl-9 pr-3 py-2 bg-muted/40 rounded-lg text-sm outline-none focus:bg-background" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} data-testid="messages-search-input" placeholder="Search conversations..." className="w-full pl-9 pr-3 py-2 bg-muted/40 rounded-lg text-sm outline-none focus:bg-background" />
             </div>
           </div>
           <div className="flex-1 overflow-y-auto scrollbar-thin">
@@ -57,8 +58,8 @@ export default function Messages() {
                 <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
                 No conversations yet
               </div>
-            ) : threads.map((t) => (
-              <button key={t.thread_id} onClick={() => setSelected(t)} className={`w-full text-left p-3 border-b border-border hover:bg-accent transition-colors ${selected?.thread_id === t.thread_id ? 'bg-primary/5' : ''}`}>
+            ) : threads.filter((t) => !query.trim() || `${otherName(t)} ${t.subject || ''} ${t.last_message || ''}`.toLowerCase().includes(query.trim().toLowerCase())).map((t) => (
+              <button key={t.thread_id} data-testid={`thread-${t.thread_id}`} onClick={() => setSelected(t)} className={`w-full text-left p-3 border-b border-border hover:bg-accent transition-colors ${selected?.thread_id === t.thread_id ? 'bg-primary/5' : ''}`}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-blue-600 text-white text-xs font-semibold flex items-center justify-center shrink-0">
                     {otherName(t).split(' ').map((s) => s[0]).slice(0, 2).join('')}

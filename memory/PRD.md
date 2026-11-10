@@ -23,6 +23,15 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 7. Live Map, News Feed, Cost Estimator, Community Forum, Legal & Privacy, Guide & Help, Report Provider, Disputes, More menu
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
+## What's Implemented (2026-11 — Touch redesign, invoice sending, service area)
+- ✅ **Phone/tablet touch shell (<1024px)**; desktop (≥1024) unchanged. Top bar + bottom nav (3–4 role tabs + **Menu** → left side sheet with full role sidebar). `ViewModeContext` (`compact`, `framed`, `inFrame`).
+- ✅ **Desktop "Mobile view"** = real phone preview: device frame with an iframe of the app (true breakpoints) + "Back to desktop".
+- ✅ **Side panes** (`components/SidePane.jsx`): Find Providers filters, Client Home "How it works", My Job Posts detail, Track Workers team list. Messages = list → chat with back button on phones.
+- ✅ No horizontal overflow on any page for any role at 390/768/820 (iteration_17).
+- ✅ **Invoice sending**: `POST /api/jobs/{id}/invoice/send` (linked provider only) saves a versioned copy to `invoices`, posts a chat message, emails the customer via Emergent managed email (`backend/email_service.py`, env EMERGENT_EMAIL_KEY, EMAIL_FROM_NAME). Provider can resend (version+1). Customers see the last sent copy. Demo customer emails are fake → email blocked (non-fatal, shown as "in chat only").
+- ✅ **Service area radius**: `service_radius_km` (1–200 or null = no limit, default null) via PATCH /providers/me; card on provider Profile; search hides providers whose radius is less than the customer's distance.
+- ✅ Messages conversation search works.
+
 ## What's Implemented (2026-06 — Timesheet, nav cleanup, distance filter)
 - ✅ **Timesheet module** (`/provider/timesheet`, `pages/provider/Timesheet.jsx`): live start/stop timers (work/travel/materials) + manual entries with km/fuel, GPS auto-geofence mode, browser location captured at start & stop (shown as map links). Job dropdown from `GET /api/timesheets/jobs` (provider's booked/accepted-bid jobs).
 - ✅ **Invoice line items**: `GET /api/jobs/{job_id}/invoice` = agreed quote + billable completed timesheet lines (grouped per type/worker/rate) + fuel, subtotal, 15% GST, total. Access: job client, approver, linked provider. Shown on Timesheet (invoice preview) and customer JobDetail (status != open) via `components/JobInvoice.jsx`.

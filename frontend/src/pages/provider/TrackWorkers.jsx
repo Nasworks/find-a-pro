@@ -73,7 +73,7 @@ export default function TrackWorkers() {
       </aside>
       </SidePane>
 
-      <div className="flex-1 relative min-w-0">
+      <div className="flex-1 relative min-w-0 isolate">
         <MapContainer center={center} zoom={12} style={{ height: '100%', width: '100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap contributors" />
           {withPositions.map((m) => (

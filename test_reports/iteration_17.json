@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 17: tested the mobile/tablet touch shell redesign, the invoice send/resend flow and the provider service-area radius. Backend: 6/6 new pytest tests passed (invoice send 403/404/version increment/chat message/customer sees the sent copy; radius validation, 1 km radius hides the provider from a far customer, null restores it). Frontend: for all 6 roles at 390x844, 768x1024 and 820x1180, every sidebar page (about 65 per viewport) showed no horizontal overflow and no text squashed letter by letter; the bottom nav and the Menu left sheet work (navigating closes the sheet). Find Providers Filters pane changes results, the How-it-works pane opens, the My Job Posts right pane opens, Messages shows list then chat with a back button on phone and side by side on tablet. Breakpoint is exact: 1023 = touch shell, 1024 = desktop. Desktop at 1920 is unchanged (filters inline, inline job detail panel, two-column messages), and the phone-frame preview with iframe and Back to desktop works. Invoice: provider resend v2->v3 with toast 'email could not be delivered' and badge 'in chat only'; customer sees 'Sent by your provider ... (updated, v3)' with no send button, plus the chat message. Service area card: toggle, slider, save and persist after reload all work. Demo provider radius reset to null at the end. One UI bug: on Track Workers the 'Workers' floating button is hidden behind the Leaflet map on phone and tablet.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/providers/me", "issue": "service_radius_km=true is accepted (bool is a subclass of int in Python) and stored as true, so it acts as a 1 km radius. Add `isinstance(r, bool)` to the rejection check."},
+      {"endpoint": "PATCH /api/providers/me", "issue": "Validation allows up to 500 km but the UI slider max is 200. A radius of 201-500 set through the API shows a slider value off the scale. Align the limits or clamp the slider."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TrackWorkers (provider) phone/tablet", "issue": "The 'Workers' button (workers-pane-trigger, fixed, z-30) is drawn under the Leaflet map panes (z-index 400+) and cannot be seen at 390 or 820, so users cannot discover the team pane. It can still be clicked because Leaflet tiles have pointer-events:none. Fix: add isolation/z-0 to the map wrapper div (`flex-1 relative min-w-0` -> add `z-0` or `isolate`) or raise the button's z-index (e.g. z-[1000]).", "selector": "[data-testid=workers-pane-trigger]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Mobile/desktop top bar", "issues": ["The notification bell (mobile-notifications-btn) has no onClick handler; it is decorative only (also true before this change)."]},
+      {"screen": "Messages", "issues": ["The 'Search conversations' input does nothing and has no data-testid."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter17_invoice_send_service_area.py", "/app/test_reports/pytest/iter17.xml"],
+  "action_items": [
+    "Fix the TrackWorkers 'Workers' button being hidden behind the Leaflet map on phone/tablet (stacking context / z-index)",
+    "Reject boolean service_radius_km in PATCH /api/providers/me; align the 500 km backend limit with the 200 km slider",
+    "Optional: give the notifications bell a handler and make the messages search work"
+  ],
+  "critical_code_review_comments": [
+    "SidePane.jsx: fixed position buttons use z-30 and will sit under any Leaflet/map content. Consider a higher z-index for side-pane-fab globally.",
+    "ViewModeContext: detectDefault stores 'mobile' for phones (<768) in localStorage; if the same browser later opens at desktop width it will land in the framed phone preview. This is probably fine, but be aware of it.",
+    "send_job_invoice: the email goes only to client_id; the job's approver_id (property manager etc.) gets neither the chat message nor the email. Confirm this is intended.",
+    "PATCH /providers/me upserts provider_profiles for any role (a customer calling it would create a profile). This predates this change, but a role check is advisable."
+  ],
+  "updated_files": ["/app/frontend/src/pages/client/Messages.jsx (added data-testid=thread-<id> to conversation list buttons)", "/app/backend/tests/test_iter17_invoice_send_service_area.py"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "~96% (1 visual bug: Workers button hidden on Track Workers)"},
+  "seed_data_creation": "No new records. Invoice for job_3f75aa7134 resent twice (now v3) and the demo customer's thread got 2 extra 'updated invoice' chat messages. Demo provider service_radius_km was set temporarily (1 km, 30 km) and reset to null (verified).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use demo-login cookie auth through page.request.post('/api/auth/demo-login', {role}). Clear localStorage 'dispatchr_view_mode' before desktop tests. Quote attribute selectors that contain dots, e.g. [data-testid=\"filter-min_rating-4.5\"]. Leaflet tiles have pointer-events:none, so elementFromPoint/visibility checks can falsely pass; verify map-overlay buttons with screenshots. Always reset the demo provider service_radius_km to null."
+}
