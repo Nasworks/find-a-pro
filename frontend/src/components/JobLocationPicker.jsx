@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home as HomeIcon, Check, MapPin, Star } from 'lucide-react';
+import { Home as HomeIcon, Building2, Check, MapPin, Star } from 'lucide-react';
 import { Input } from './ui/input';
 import AddressAutocomplete from './AddressAutocomplete';
 
@@ -18,7 +18,7 @@ export default function JobLocationPicker({ properties, value, onChange, onPickP
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {properties.map((p) => {
             const active = value.property_id === p.property_id;
-            const Icon = HomeIcon;
+            const Icon = p.property_type === 'commercial' ? Building2 : HomeIcon;
             return (
               <button
                 key={p.property_id}

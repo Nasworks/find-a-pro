@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../componen
 import { Checkbox } from '../../components/ui/checkbox';
 import api from '../../lib/api';
 import { JobInvoice } from '../../components/JobInvoice';
+import JobMatchesPanel from '../../components/JobMatchesPanel';
+import { SIZE_META, priceLine } from '../../components/MatchedJobsFeed';
 import { MediaThumb, mediaSrc, isVideo } from '../../components/MediaUploader';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
@@ -38,6 +40,8 @@ export default function JobDetail() {
   if (!data) return <div className="p-10 text-center text-muted-foreground">Loading...</div>;
   const { job, bids } = data;
   const isOwner = user?.user_id === job.client_id;
+  const isOpenJob = ['open', 'matched'].includes(job.status);
+  const canSeeMatches = isOwner || user?.user_id === job.approver_id;
   const myBid = bids.find((b) => b.provider_id === user?.user_id && b.status === 'pending');
   // Show only latest revision per provider chain
   const activeBids = bids.filter((b) => !bids.some((x) => x.previous_bid_id === b.bid_id));
@@ -76,7 +80,7 @@ export default function JobDetail() {
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 capitalize">{job.status.replace('_', ' ')}</Badge>
+              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 capitalize">{job.status === 'done' ? 'completed' : job.status.replace('_', ' ')}</Badge>
               <span className="text-xs text-muted-foreground">Posted {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}</span>
             </div>
             <h1 className="text-2xl font-bold text-foreground mt-2">{job.title}</h1>
@@ -84,7 +88,9 @@ export default function JobDetail() {
               <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {job.location}</span>
               <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {job.urgency}</span>
               <span className="capitalize">· {job.category}</span>
-              {job.budget_min && <span className="inline-flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" /> ${job.budget_min}–${job.budget_max}</span>}
+              {job.pricing_type && <Badge className={`${(SIZE_META[job.pricing_type] || SIZE_META.large_quote).cls} border-0`} data-testid="job-size-badge">{(SIZE_META[job.pricing_type] || SIZE_META.large_quote).l}</Badge>}
+              <span className="inline-flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" /> {priceLine(job)}</span>
+              {job.preferred_date && <span className="inline-flex items-center gap-1" data-testid="job-preferred-date"><Clock className="w-3.5 h-3.5" /> Preferred {job.preferred_date}</span>}
             </div>
           </div>
           {bidStats && (
@@ -97,6 +103,10 @@ export default function JobDetail() {
         </div>
         <p className="mt-4 text-foreground/90 whitespace-pre-wrap">{job.description}</p>
       </div>
+
+      {canSeeMatches && job.approval_status !== 'pending' && (
+        <div className="mt-6"><JobMatchesPanel job={job} onAwarded={load} /></div>
+      )}
 
       {/* Tabs */}
       <div className="mt-6 border-b border-border">
@@ -153,10 +163,10 @@ export default function JobDetail() {
             {job.status !== 'open' && <JobInvoice jobId={job.job_id} hideWhenEmpty />}
           </div>
           <aside className="space-y-4">
-            {!isOwner && user?.role === 'provider' && job.status === 'open' && !myBid && (
+            {!isOwner && user?.role === 'provider' && isOpenJob && !myBid && (
               <Button className="w-full" size="lg" onClick={() => setOpenBid({ mode: 'new' })}>Submit a Bid</Button>
             )}
-            {isOwner && job.status === 'open' && activeBids.length > 0 && (
+            {isOwner && isOpenJob && activeBids.length > 0 && (
               <Button className="w-full" size="lg" onClick={() => setTab('bids')}>Review {activeBids.length} bids</Button>
             )}
             <div className="bg-card border border-border rounded-2xl p-4 text-sm">
@@ -170,7 +180,7 @@ export default function JobDetail() {
       {tab === 'bids' && (
         <div className="mt-6 space-y-4">
           {/* Provider actions */}
-          {!isOwner && user?.role === 'provider' && job.status === 'open' && !myBid && (
+          {!isOwner && user?.role === 'provider' && isOpenJob && !myBid && (
             <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center justify-between">
               <div>
                 <div className="font-semibold text-foreground">Ready to bid?</div>

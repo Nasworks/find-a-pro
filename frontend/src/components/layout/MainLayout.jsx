@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, Monitor } from 'lucide-react';
+import { Monitor } from 'lucide-react';
+import NotificationBell from '../NotificationBell';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MobileBottomNav from './MobileBottomNav';
@@ -52,10 +53,7 @@ function MobileTopBar() {
     <header className="sticky top-0 z-30 h-14 bg-card/95 backdrop-blur border-b border-border flex items-center justify-between px-4">
       <Logo />
       <div className="flex items-center gap-1">
-        <button className="w-10 h-10 rounded-full hover:bg-accent flex items-center justify-center relative" aria-label="Notifications" data-testid="mobile-notifications-btn">
-          <Bell className="w-5 h-5 text-muted-foreground" />
-          <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-primary" />
-        </button>
+        <NotificationBell className="w-10 h-10" testid="mobile-notifications-btn" />
         <Link to="/profile" data-testid="mobile-avatar-link" className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-blue-600 text-white text-xs font-semibold flex items-center justify-center">{initials}</Link>
       </div>
     </header>

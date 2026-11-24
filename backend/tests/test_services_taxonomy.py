@@ -28,45 +28,30 @@ LUCIDE_KNOWN = {
 
 # ------------------------ taxonomy endpoints ------------------------
 
-def test_commercial_taxonomy():
+def test_commercial_taxonomy_removed():
+    # Residential-only app: commercial taxonomy endpoint removed
     r = requests.get(f"{API}/services/commercial-taxonomy")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["total_categories"] == 15
-    assert data["total_subcategories"] == 102
-    cats = data["categories"]
-    assert len(cats) == 15
-    for c in cats:
-        assert set(c.keys()) >= {"id", "name", "icon", "color", "subcategories"}
-        assert c["color"].startswith("#") and len(c["color"]) == 7
-        assert isinstance(c["subcategories"], list) and len(c["subcategories"]) > 0
-        for s in c["subcategories"]:
-            assert set(s.keys()) == {"id", "name"}
-        # icon spot-check
-        assert c["icon"] in LUCIDE_KNOWN, f"unknown icon: {c['icon']}"
+    assert r.status_code == 404
 
 
 def test_residential_taxonomy():
     r = requests.get(f"{API}/services/residential-taxonomy")
     assert r.status_code == 200
     data = r.json()
-    assert data["total_categories"] == 18
-    assert data["total_subcategories"] == 122
-    assert len(data["categories"]) == 18
-    for c in data["categories"]:
-        assert c["icon"] in LUCIDE_KNOWN, f"unknown icon: {c['icon']}"
+    assert data["total_categories"] == 25
+    assert data["total_subcategories"] == 179
+    assert len(data["categories"]) == 25
 
 
 def test_unified_taxonomy_residential():
     r = requests.get(f"{API}/services/taxonomy/residential")
     assert r.status_code == 200
-    assert r.json()["total_categories"] == 18
+    assert r.json()["total_categories"] == 25
 
 
 def test_unified_taxonomy_commercial():
     r = requests.get(f"{API}/services/taxonomy/commercial")
-    assert r.status_code == 200
-    assert r.json()["total_categories"] == 15
+    assert r.status_code == 404
 
 
 def test_unified_taxonomy_invalid():
@@ -74,12 +59,9 @@ def test_unified_taxonomy_invalid():
     assert r.status_code == 404
 
 
-def test_commercial_category_electrical():
+def test_commercial_category_electrical_removed():
     r = requests.get(f"{API}/services/commercial-taxonomy/electrical")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["id"] == "electrical"
-    assert len(data["subcategories"]) == 8
+    assert r.status_code == 404
 
 
 def test_residential_category_plumbing():
@@ -148,25 +130,13 @@ def test_create_job_residential_with_subcategory(customer_session):
     assert j["service_type"] == "residential"
 
 
-def test_create_job_commercial_with_subcategory(customer_session):
-    payload = {
-        "title": "TEST_ HVAC service",
-        "description": "AC not cooling in office",
-        "category": "hvac-mechanical",
-        "subcategory": "commercial-air-conditioning",
-        "service_type": "commercial",
-        "location": "Auckland",
-        "urgency": "asap",
-        "mode": "quotes",
-        "photos": [],
-    }
+def test_create_job_commercial_rejected(customer_session):
+    # Residential-only: commercial jobs are rejected
+    payload = {"title": "TEST_ HVAC service", "description": "AC", "category": "hvac-mechanical",
+               "subcategory": "commercial-air-conditioning", "service_type": "commercial",
+               "location": "Auckland", "urgency": "asap", "mode": "quotes", "photos": []}
     r = customer_session.post(f"{API}/jobs", json=payload)
-    assert r.status_code == 200, r.text
-    job_id = r.json()["job_id"]
-    j = customer_session.get(f"{API}/jobs/{job_id}").json()["job"]
-    assert j["category"] == "hvac-mechanical"
-    assert j["subcategory"] == "commercial-air-conditioning"
-    assert j["service_type"] == "commercial"
+    assert r.status_code == 400, r.text
 
 
 def test_create_job_without_subcategory_still_works(customer_session):

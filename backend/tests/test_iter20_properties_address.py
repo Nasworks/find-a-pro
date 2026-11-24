@@ -83,14 +83,14 @@ class TestProperties:
         orig_primary = next((p["property_id"] for p in before if p["is_primary"]), None)
         # create secondary
         r = customer.post(f"{BASE_URL}/api/properties", json={
-            "address": "TEST_10 Queen Street, Auckland", "name": "TEST_Rental", "property_type": "commercial",
+            "address": "TEST_10 Queen Street, Auckland", "name": "TEST_Rental", "property_type": "residential",
             "bedrooms": 2, "bathrooms": 1.5, "access_notes": "TEST gate 1234", "lat": -36.85, "lng": 174.76})
         assert r.status_code == 200, r.text
         p = r.json()
         pid = p["property_id"]
         created["props"].append((customer, pid))
         assert p["is_primary"] is (orig_primary is None)
-        assert p["bathrooms"] == 1.5 and p["property_type"] == "commercial"
+        assert p["bathrooms"] == 1.5 and p["property_type"] == "residential"
         # list contains it, primary first
         lst = customer.get(f"{BASE_URL}/api/properties/mine").json()
         assert any(x["property_id"] == pid for x in lst)

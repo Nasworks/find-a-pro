@@ -69,7 +69,7 @@ class JobPost(BaseModel):
     description: str
     category: str
     subcategory: Optional[str] = None
-    service_type: str = "residential"  # residential only
+    service_type: str = "residential"  # residential | commercial
     location: str = "Auckland"
     budget_min: Optional[float] = None
     budget_max: Optional[float] = None
@@ -80,6 +80,13 @@ class JobPost(BaseModel):
     property_id: Optional[str] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+    # ---- Job size / pricing + matching engine ----
+    pricing_type: str = "large_quote"            # small_fixed | hourly | large_quote
+    budget_or_estimate: Optional[float] = None   # target fixed price ($) or estimated hours
+    preferred_date: Optional[str] = None         # ISO date (YYYY-MM-DD)
+    location_suburb: Optional[str] = None
+    client_type: str = "residential"             # mirrors service_type
+    matched_count: int = 0                       # specialised pros notified by the dispatcher
     # ---- Tenant → Manager approval workflow (2026-02-07) ----
     tenancy_id: Optional[str] = None            # set when tenant posts on behalf of a linked tenancy
     tenant_id: Optional[str] = None             # duplicate of client_id, but explicit
@@ -107,6 +114,10 @@ class JobCreate(BaseModel):
     property_id: Optional[str] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+    pricing_type: str = "large_quote"
+    budget_or_estimate: Optional[float] = None
+    preferred_date: Optional[str] = None
+    location_suburb: Optional[str] = None
     # Tenant flow: opt-in to route through the manager
     tenancy_id: Optional[str] = None
     route_via_manager: bool = False  # if True and user has active tenancy, will require manager approval
@@ -703,12 +714,12 @@ async def switch_role(request: Request, user=Depends(require_user)):
 @api.post("/jobs")
 async def create_job(payload: JobCreate, user=Depends(require_user)):
     # Validate service_type
-    if payload.service_type != "residential":
-        raise HTTPException(status_code=400, detail="Only residential jobs can be posted")
+    if payload.service_type not in ("residential", "commercial"):
+        raise HTTPException(status_code=400, detail="service_type must be 'residential' or 'commercial'")
     # Validate category (and subcategory if present) against the correct taxonomy —
     # but stay permissive with legacy short-form categories (from old /api/categories)
     # so we don't break older flows / bookmarks.
-    idx = RESIDENTIAL_TAXONOMY_INDEX
+    idx = COMMERCIAL_TAXONOMY_INDEX if payload.service_type == "commercial" else RESIDENTIAL_TAXONOMY_INDEX
     known_cats = {k.split("/")[0] for k in idx.keys()}
     if payload.subcategory:
         key = f"{payload.category}/{payload.subcategory}"
@@ -716,6 +727,15 @@ async def create_job(payload: JobCreate, user=Depends(require_user)):
             raise HTTPException(status_code=400, detail=f"Unknown subcategory '{payload.subcategory}' for {payload.service_type} category '{payload.category}'")
     elif payload.category in known_cats:
         pass
+    if payload.pricing_type not in PRICING_TYPES:
+        raise HTTPException(status_code=400, detail="pricing_type must be small_fixed, hourly or large_quote")
+    if payload.budget_or_estimate is not None and not (0 < payload.budget_or_estimate <= 10_000_000):
+        raise HTTPException(status_code=400, detail="budget_or_estimate must be a positive number")
+    if payload.preferred_date:
+        try:
+            datetime.strptime(payload.preferred_date[:10], "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="preferred_date must be YYYY-MM-DD")
     # ---- Tenancy / approval routing ----
     approver_id: Optional[str] = None
     tenancy_id: Optional[str] = payload.tenancy_id
@@ -753,9 +773,14 @@ async def create_job(payload: JobCreate, user=Depends(require_user)):
         **job_data,
     )
     doc = job.dict()
+    doc["client_type"] = payload.service_type
     doc["access_notes"] = access_notes  # private: only shown to the client, approver and winning pro
     await db.jobs.insert_one(doc)
-    return {k: v for k, v in doc.items() if k != "_id"}
+    if approval_status != "pending":  # pending jobs are dispatched once the manager approves
+        doc["matched_count"] = await dispatch_job(doc)
+        if doc["matched_count"]:
+            doc["status"] = "matched"
+    return {k: v for k, v in doc.items() if k not in ("_id",)}
 
 
 @api.get("/jobs/mine")
@@ -790,7 +815,7 @@ async def my_jobs(user=Depends(require_user)):
 async def job_board(category: Optional[str] = None, user=Depends(require_user)):
     """Providers only see approved (or not_required) open jobs."""
     q: Dict[str, Any] = {
-        "status": "open",
+        "status": {"$in": ["open", "matched"]},
         "approval_status": {"$in": ["not_required", "approved"]},
     }
     if category:
@@ -966,7 +991,10 @@ async def accept_bid(bid_id: str, user=Depends(require_user)):
     if not job or job["client_id"] != user["user_id"]:
         raise HTTPException(status_code=403, detail="Not allowed")
     await db.bids.update_one({"bid_id": bid_id}, {"$set": {"status": "accepted"}})
-    await db.jobs.update_one({"job_id": bid["job_id"]}, {"$set": {"status": "in_progress"}})
+    await db.jobs.update_one({"job_id": bid["job_id"]}, {"$set": {"status": "in_progress", "assigned_provider_id": bid["provider_id"]}})
+    # Close the dispatch queue for everyone else
+    await db.job_matches.update_many({"job_id": bid["job_id"], "provider_id": {"$ne": bid["provider_id"]}}, {"$set": {"match_status": "closed"}})
+    await db.job_matches.update_many({"job_id": bid["job_id"], "provider_id": bid["provider_id"]}, {"$set": {"match_status": "awarded"}})
     # Create booking
     booking = Booking(
         client_id=user["user_id"],
@@ -1185,8 +1213,8 @@ async def like_post(post_id: str, user=Depends(require_user)):
 
 # ---------------- PROPERTIES ----------------
 def _validate_property_fields(data: Dict[str, Any]):
-    if "property_type" in data and data["property_type"] != "residential":
-        raise HTTPException(status_code=400, detail="Only residential properties are supported")
+    if "property_type" in data and data["property_type"] not in ("residential", "commercial"):
+        raise HTTPException(status_code=400, detail="property_type must be 'residential' or 'commercial'")
     if "address" in data and not (data["address"] or "").strip():
         raise HTTPException(status_code=400, detail="Address is required")
     for k in ("bedrooms", "bathrooms"):
@@ -1381,13 +1409,13 @@ async def nearby_providers(category: Optional[str] = None):
 # Taxonomy category id -> older provider category slugs still stored on profiles
 CATEGORY_ALIASES: Dict[str, List[str]] = {
     "plumbing-gas": ["plumbing"],
-    "heating-cooling-ventilation": ["hvac"],
-    "general-home-maintenance": ["handyman"],
-    "painting-interior-finishes": ["painting"],
-    "roofing-guttering": ["roofing"],
-    "gardening-lawn": ["lawn", "gardening"],
-    "landscaping": ["lawn", "landscaping"],
-    "cleaning": ["cleaning"],
+    "heating-cooling-ventilation": ["hvac"], "hvac-mechanical": ["hvac"],
+    "general-home-maintenance": ["handyman"], "building-maintenance": ["handyman"],
+    "painting-interior-finishes": ["painting"], "interior-finishes": ["painting"],
+    "roofing-guttering": ["roofing"], "roofing-waterproofing": ["roofing"],
+    "gardening-lawn": ["lawn", "gardening"], "grounds-maintenance": ["lawn", "gardening"],
+    "landscaping": ["lawn", "landscaping"], "commercial-landscaping": ["lawn", "landscaping"],
+    "cleaning": ["cleaning"], "commercial-cleaning": ["cleaning"],
 }
 
 
@@ -1526,6 +1554,10 @@ async def my_provider_profile(user=Depends(require_user)):
 async def update_provider(request: Request, user=Depends(require_user)):
     body = await request.json()
     allowed = {k: v for k, v in body.items() if k in ["business_name", "categories", "hourly_rate", "bio", "online", "plan"]}
+    if "availability_status" in body:
+        if body["availability_status"] not in AVAILABILITY:
+            raise HTTPException(status_code=400, detail="availability_status must be available or busy")
+        allowed["availability_status"] = body["availability_status"]
     if "service_radius_km" in body:
         r = body["service_radius_km"]
         if r is not None and (isinstance(r, bool) or not isinstance(r, (int, float)) or not 1 <= r <= 200):
@@ -2677,6 +2709,9 @@ async def approve_job(job_id: str, payload: JobApprovalAction, user=Depends(requ
             update["mode"] = "instant"
     await db.jobs.update_one({"job_id": job_id}, {"$set": update})
     updated = await db.jobs.find_one({"job_id": job_id})
+    if not updated.get("assigned_provider_id"):
+        await dispatch_job(updated)
+        updated = await db.jobs.find_one({"job_id": job_id})
     return {k: v for k, v in updated.items() if k != "_id"}
 
 
@@ -2699,7 +2734,88 @@ async def reject_job(job_id: str, payload: JobApprovalAction, user=Depends(requi
     return {"ok": True}
 
 
-# ---------------- RESIDENTIAL SERVICES TAXONOMY (residential-only app) ----------------
+# ---------------- SERVICES TAXONOMY (Residential + Commercial tracks) ----------------
+COMMERCIAL_TAXONOMY = [
+    {"id": "building-maintenance", "name": "Building Maintenance", "icon": "Building2", "color": "#3B82F6", "subs": [
+        "General Building Maintenance", "Commercial Handyman", "Building Repairs",
+        "Preventative Maintenance", "Building Alterations", "Minor Commercial Fit-outs",
+    ]},
+    {"id": "electrical", "name": "Electrical", "icon": "Zap", "color": "#F59E0B", "subs": [
+        "Commercial Electrical", "Lighting Installation & Upgrades", "LED Retrofits",
+        "Emergency Lighting", "Switchboard Upgrades", "Power & Data",
+        "EV Charger Installation", "Electrical Fault Finding",
+    ]},
+    {"id": "plumbing-gas", "name": "Plumbing & Gas", "icon": "Droplets", "color": "#0EA5E9", "subs": [
+        "Commercial Plumbing", "Drain Repairs", "Hot Water Systems", "Water Supply",
+        "Pipework", "Bathrooms & Amenities", "Kitchens", "Gas Fitting",
+    ]},
+    {"id": "hvac-mechanical", "name": "HVAC & Mechanical", "icon": "Wind", "color": "#06B6D4", "subs": [
+        "Commercial Air Conditioning", "Heat Pumps", "Ventilation Systems", "Refrigeration",
+        "Extraction Systems", "HVAC Upgrades", "Mechanical Plant Installation",
+    ]},
+    {"id": "roofing-waterproofing", "name": "Roofing & Waterproofing", "icon": "Home", "color": "#EF4444", "subs": [
+        "Roof Repairs", "Roof Replacement", "Commercial Roofing", "Gutters & Downpipes",
+        "Membrane Roofing", "Waterproofing", "Leak Repairs",
+    ]},
+    {"id": "carpentry-joinery", "name": "Carpentry & Joinery", "icon": "Hammer", "color": "#A16207", "subs": [
+        "Commercial Carpentry", "Office Fit-outs", "Doors & Hardware", "Windows",
+        "Partitions", "Custom Joinery", "Cabinetry",
+    ]},
+    {"id": "interior-finishes", "name": "Interior Finishes", "icon": "Paintbrush", "color": "#EC4899", "subs": [
+        "Painting", "Gib Installation", "Plastering", "Ceiling Repairs",
+        "Suspended Ceilings", "Flooring", "Tiling",
+    ]},
+    {"id": "exterior-works", "name": "Exterior Works", "icon": "TreePine", "color": "#65A30D", "subs": [
+        "Cladding", "Facade Repairs", "Concrete Repairs", "Asphalt",
+        "Carparks", "Footpaths", "Retaining Walls", "Fencing & Gates",
+    ]},
+    {"id": "glass-aluminium", "name": "Glass & Aluminium", "icon": "Square", "color": "#0891B2", "subs": [
+        "Commercial Glazing", "Shopfront Glass", "Aluminium Joinery",
+        "Automatic Doors", "Glass Replacement", "Balustrades",
+    ]},
+    {"id": "fire-protection", "name": "Fire Protection", "icon": "Flame", "color": "#DC2626", "subs": [
+        "Fire Alarms", "Fire Sprinklers", "Fire Doors", "Passive Fire Protection",
+        "Fire Compliance Upgrades", "Emergency Lighting",
+    ]},
+    {"id": "security-systems", "name": "Security Systems", "icon": "ShieldCheck", "color": "#7C3AED", "subs": [
+        "CCTV Installation", "Alarm Systems", "Access Control", "Intercom Systems",
+        "Boom Gates", "Security Bollards", "Automatic Gates",
+    ]},
+    {"id": "data-communications", "name": "Data & Communications", "icon": "Router", "color": "#2563EB", "subs": [
+        "Structured Cabling", "Fibre Installation", "Network Cabling",
+        "Server Cabinets", "Wi-Fi Installation", "Communications Infrastructure",
+    ]},
+    {"id": "building-automation", "name": "Building Automation", "icon": "Cpu", "color": "#8B5CF6", "subs": [
+        "Building Management Systems (BMS)", "Smart Lighting", "HVAC Controls",
+        "Energy Monitoring", "Access Automation", "Smart Building Upgrades",
+    ]},
+    {"id": "renewable-energy", "name": "Renewable Energy", "icon": "Sun", "color": "#10B981", "subs": [
+        "Commercial Solar", "Battery Storage", "EV Charging Infrastructure",
+        "Energy Monitoring", "Solar Maintenance",
+    ]},
+    {"id": "renovations-fitouts", "name": "Commercial Renovations & Fit-outs", "icon": "Sparkles", "color": "#F97316", "subs": [
+        "Office Renovations", "Retail Fit-outs", "Hospitality Fit-outs", "Medical Fit-outs",
+        "Warehouse Fit-outs", "Interior Refurbishments", "Building Upgrades",
+        "Accessibility Upgrades",
+    ]},
+    {"id": "commercial-cleaning", "name": "Commercial Cleaning & Facility Hygiene", "icon": "SprayCan", "color": "#06B6D4", "subs": [
+        "Office Cleaning", "Retail Cleaning", "Medical & Healthcare Cleaning", "Industrial & Warehouse Cleaning",
+        "School & Childcare Cleaning", "Commercial Window Cleaning", "High-Rise Window Cleaning",
+        "Carpet & Hard Floor Care", "Builders' Clean", "Commercial Water Blasting",
+        "Washroom Hygiene Services", "Body Corporate Cleaning", "Commercial Kitchen & Hood Cleaning",
+    ]},
+    {"id": "grounds-maintenance", "name": "Gardening & Grounds Maintenance", "icon": "Flower2", "color": "#22C55E", "subs": [
+        "Commercial Lawn Mowing", "Grounds Maintenance Contracts", "Hedge & Shrub Maintenance",
+        "Tree Care & Arborist", "Weed Control & Spraying", "Commercial Green Waste Removal",
+        "Irrigation Maintenance", "Interior Plant Care",
+    ]},
+    {"id": "commercial-landscaping", "name": "Landscaping", "icon": "Trees", "color": "#15803D", "subs": [
+        "Commercial Landscape Design", "Commercial Landscape Construction", "Paving & Hardscaping",
+        "Car Park Landscaping", "Commercial Retaining Walls", "Commercial Artificial Turf",
+        "Outdoor & Amenity Lighting", "Stormwater & Drainage",
+    ]},
+]
+
 RESIDENTIAL_TAXONOMY = [
     {"id": "general-home-maintenance", "name": "General Home Maintenance", "icon": "Home", "color": "#3B82F6", "subs": [
         "Handyman Services", "Home Repairs", "Property Maintenance", "Preventative Maintenance", "Odd Jobs",
@@ -2824,6 +2940,7 @@ def _index_taxonomy(taxonomy: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]
 
 
 RESIDENTIAL_TAXONOMY_INDEX = _index_taxonomy(RESIDENTIAL_TAXONOMY)
+COMMERCIAL_TAXONOMY_INDEX = _index_taxonomy(COMMERCIAL_TAXONOMY)
 
 
 def _taxonomy_payload(taxonomy: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -2842,6 +2959,12 @@ def _taxonomy_payload(taxonomy: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+@api.get("/services/commercial-taxonomy")
+async def commercial_taxonomy():
+    """15-category commercial services taxonomy with all subcategories."""
+    return _taxonomy_payload(COMMERCIAL_TAXONOMY)
+
+
 @api.get("/services/residential-taxonomy")
 async def residential_taxonomy():
     """18-category residential home services taxonomy — homeowners, tenants, landlords, holiday-home owners."""
@@ -2850,143 +2973,146 @@ async def residential_taxonomy():
 
 @api.get("/services/taxonomy/{service_type}")
 async def taxonomy_by_type(service_type: str):
-    """Pro Finder NZ is residential-only — 'residential' is the only service type."""
+    """Unified entry — pass 'residential' or 'commercial'."""
+    if service_type == "commercial":
+        return _taxonomy_payload(COMMERCIAL_TAXONOMY)
     if service_type == "residential":
         return _taxonomy_payload(RESIDENTIAL_TAXONOMY)
-    raise HTTPException(status_code=404, detail="Only residential services are offered.")
+    raise HTTPException(status_code=404, detail="Unknown service_type. Use 'residential' or 'commercial'.")
 
 
-# (keywords, residential sub) — drives free-text job type detection
+# (keywords, residential sub, commercial sub or None) — drives free-text job type detection
 SERVICE_KEYWORDS: List[tuple] = [
-    (["tap", "faucet", "dripping"], "Tap & Toilet Repairs"),
-    (["toilet", "cistern", "loo"], "Tap & Toilet Repairs"),
-    (["leak", "leaking", "burst pipe", "water leak"], "Leak Repairs"),
-    (["drain", "blocked", "blockage", "clogged", "sewer"], "Blocked Drains"),
-    (["hot water", "cylinder", "califont"], "Hot Water Systems"),
-    (["gas", "gas fitting", "gas bottle", "gas hob"], "Gas Fitting & Gas Appliances"),
-    (["plumber", "plumbing", "pipe"], "Residential Plumbing"),
-    (["electrician", "sparky", "wiring", "rewire"], "New Wiring & Rewiring"),
-    (["power point", "socket", "switch", "outlet"], "Power Points & Switches"),
-    (["light", "lights", "lighting", "downlight", "led"], "Lighting Installation"),
-    (["switchboard", "fuse"], "Switchboard Upgrades"),
-    (["ev charger", "car charger"], "EV Charger Installation"),
-    (["smoke alarm"], "Smoke Alarms"),
-    (["tripping", "no power", "power out", "electrical fault"], "Fault Finding & Repairs"),
-    (["heat pump", "heatpump"], "Heat Pump Installation"),
-    (["air con", "aircon", "air conditioning", "air conditioner"], "Air Conditioning"),
-    (["extractor", "ventilation", "condensation"], "Bathroom Extractor Fans"),
-    (["roof", "roofer", "roofing", "tiles cracked"], "Roof Repairs"),
-    (["gutter", "gutters", "spouting", "downpipe"], "Gutter Repairs"),
-    (["deck", "decking"], "Deck Construction"),
-    (["fence", "fencing"], "Fencing"),
-    (["pergola"], "Pergolas"),
-    (["door", "doors"], "Doors"),
-    (["cabinet", "cabinetry", "joinery"], "Built-in Cabinets"),
-    (["carpenter", "builder", "carpentry"], "General Carpentry"),
-    (["paint", "painter", "painting", "repaint"], "Interior Painting"),
-    (["exterior paint", "paint the house", "outside of the house"], "Exterior Painting"),
-    (["gib", "plasterboard"], "Gib Installation"),
-    (["plaster", "plastering"], "Plastering"),
-    (["wallpaper"], "Wallpaper Installation"),
-    (["carpet laying", "new carpet"], "Carpet Installation"),
-    (["tile", "tiles", "tiling", "tiler"], "Floor & Wall Tiling"),
-    (["floor", "flooring", "floorboards", "laminate", "vinyl"], "Floor Repairs"),
-    (["kitchen renovation", "new kitchen", "kitchen reno"], "Kitchen Renovations"),
-    (["bathroom renovation", "bathroom reno", "new bathroom"], "Bathroom Renovations"),
-    (["renovation", "extension", "alteration"], "Home Alterations"),
-    (["driveway", "concrete"], "Driveways"),
-    (["excavation", "digger"], "Excavation"),
-    (["window", "glass", "glazing", "double glazing"], "Glass Replacement"),
-    (["cctv", "security camera", "camera"], "CCTV Installation"),
-    (["alarm", "burglar"], "Alarm Systems"),
-    (["wifi", "wi-fi", "internet", "network"], "Wi-Fi Installation"),
-    (["tv mount", "mount tv", "tv on the wall"], "TV Wall Mounting"),
-    (["solar", "solar panel"], "Solar Panel Installation"),
-    (["battery"], "Home Battery Installation"),
-    (["pool", "swimming pool"], "Swimming Pool Installation"),
-    (["spa", "hot tub"], "Spa Pool Installation"),
-    (["insulation", "insulate"], "Ceiling Insulation"),
-    (["dishwasher"], "Dishwashers"),
-    (["oven install", "cooktop", "hob"], "Ovens & Cooktops"),
-    (["washing machine"], "Washing Machines"),
-    (["rangehood"], "Rangehoods"),
-    (["asbestos"], "Asbestos Removal (Licensed)"),
-    (["demolition", "demolish"], "Demolition"),
-    (["welding", "welder", "metal"], "Welding & Metal Fabrication"),
-    (["handyman", "odd jobs", "fix", "repair", "broken"], "Handyman Services"),
-    # Gardening & lawn
-    (["mow", "mowing", "lawn", "grass", "lawns"], "Lawn Mowing"),
-    (["fertilise", "fertilize", "lawn care", "patchy lawn"], "Lawn Care & Fertilising"),
-    (["turf", "new lawn", "lawn seed", "re-sow"], "New Lawns & Turf Laying"),
-    (["garden", "gardener", "gardening", "tidy up"], "Garden Maintenance"),
-    (["weed", "weeds", "weeding", "mulch", "bark"], "Weeding & Mulching"),
-    (["hedge", "hedges"], "Hedge Trimming"),
-    (["prune", "pruning", "shrub"], "Pruning"),
-    (["tree", "trees", "arborist", "felling"], "Tree Felling & Removal"),
-    (["stump"], "Stump Grinding"),
-    (["planting", "plants", "flower", "flowers", "vege garden"], "Planting & Garden Makeovers"),
-    (["green waste", "garden waste", "rubbish"], "Green Waste Removal"),
-    (["irrigation", "sprinkler", "watering"], "Garden Irrigation"),
-    # Landscaping
-    (["landscape", "landscaping", "landscaper"], "Landscape Design"),
-    (["garden bed", "edging", "raised bed"], "Garden Beds & Edging"),
-    (["paving", "pavers", "path", "pathway"], "Paving & Pathways"),
-    (["retaining wall"], "Landscape Retaining Walls"),
-    (["patio", "courtyard", "outdoor area"], "Outdoor Living Areas"),
-    (["artificial turf", "artificial grass", "fake grass"], "Artificial Turf"),
-    (["water feature", "pond", "fountain"], "Water Features"),
-    (["garden lighting", "outdoor lighting"], "Garden Lighting"),
-    (["drainage", "soggy", "waterlogged", "stormwater"], "Section Drainage"),
-    (["section clearing", "clear the section", "overgrown", "dirt", "earth"], "Section Clearing"),
-    # Cleaning
-    (["clean", "cleaner", "cleaning", "housekeeping"], "Regular House Cleaning"),
-    (["deep clean", "spring clean"], "Deep Cleaning"),
-    (["end of tenancy", "bond clean", "vacate clean", "end of lease"], "End of Tenancy Cleaning"),
-    (["moving out", "move out", "moving in", "move in"], "Move In / Move Out Cleaning"),
-    (["carpet clean", "carpet shampoo", "stain"], "Carpet Cleaning"),
-    (["couch", "sofa", "upholstery"], "Upholstery Cleaning"),
-    (["window clean", "windows cleaned", "clean windows"], "Window Cleaning"),
-    (["oven clean"], "Oven Cleaning"),
-    (["water blast", "waterblast", "pressure wash", "water blasting"], "Water Blasting"),
-    (["house wash", "soft wash", "wash the house"], "House Washing"),
-    (["gutter clean", "clean gutters", "clean the gutters"], "Gutter Cleaning"),
-    (["moss", "lichen", "roof clean"], "Roof Cleaning & Moss Treatment"),
-    (["builders clean", "after builders", "construction clean"], "After-Builders Cleaning"),
-    (["mould", "mold", "mildew"], "Mould Removal"),
-    (["office clean", "office cleaning"], "Regular House Cleaning"),
-    (["washroom", "sanitary", "hygiene"], "Deep Cleaning"),
-    (["locksmith", "locked out", "lock change", "rekey", "new locks"], "Locksmith Services"),
-    (["builder", "renovation", "renovate"], "Builders & Renovations"),
-    (["brick", "bricklayer", "masonry", "block wall"], "Bricklaying & Masonry"),
-    (["arborist", "tree surgeon", "tree trimming"], "Arborist & Tree Services"),
-    (["gate", "gates"], "Gates"),
-    (["pest", "pests", "rats", "mice", "rodent", "rodents", "rats in the roof", "mice in the", "cockroach", "wasps", "fleas", "borer"], "Pest Control"),
-    (["chimney", "flue", "duct clean"], "Chimney & Duct Cleaning"),
-    (["appliance repair", "fridge repair", "washing machine repair", "oven repair", "broken dishwasher"], "Appliance Repairs"),
-    (["computer", "laptop", "printer", "home it", "tech support"], "Home IT Support"),
-    (["inspection", "inspector", "pre-purchase", "building report", "builders report"], "Building & Property Inspections"),
-    (["engineer", "structural engineer", "building services"], "Building Service Engineering"),
-    (["architect", "draughtsman", "drafting", "house plans"], "Architecture & Drafting"),
-    (["rubbish", "junk", "skip bin", "dump run"], "Rubbish & Green Waste Removal"),
-    (["man with a van", "local move", "movers", "furniture delivery"], "Man with a Van / Local Movers"),
-    (["house move", "removalist", "removals", "moving house"], "Full-Service House Removals"),
-    (["elderly", "caregiver", "home help", "independent living"], "Elderly & Independent Living Support"),
-    (["pet", "dog walking", "dog grooming", "pet sitting", "cat sitting"], "Pet Care & Grooming"),
-    (["tutor", "tutoring", "music lessons", "piano lessons", "homework"], "In-Home Tutoring & Music Lessons"),
-    (["mortgage", "insurance advice", "insurance adviser"], "Insurance & Mortgage Advisory"),
-    (["admin help", "tech coaching", "smartphone help", "paperwork"], "Personal Tech & Admin Coaching"),
+    (['tap', 'faucet', 'dripping'], 'Tap & Toilet Repairs', 'Commercial Plumbing'),
+    (['toilet', 'cistern', 'loo'], 'Tap & Toilet Repairs', 'Bathrooms & Amenities'),
+    (['leak', 'leaking', 'burst pipe', 'water leak'], 'Leak Repairs', 'Pipework'),
+    (['drain', 'blocked', 'blockage', 'clogged', 'sewer'], 'Blocked Drains', 'Drain Repairs'),
+    (['hot water', 'cylinder', 'califont'], 'Hot Water Systems', 'Hot Water Systems'),
+    (['gas', 'gas fitting', 'gas bottle', 'gas hob'], 'Gas Fitting & Gas Appliances', 'Gas Fitting'),
+    (['plumber', 'plumbing', 'pipe'], 'Residential Plumbing', 'Commercial Plumbing'),
+    (['electrician', 'sparky', 'wiring', 'rewire'], 'New Wiring & Rewiring', 'Commercial Electrical'),
+    (['power point', 'socket', 'switch', 'outlet'], 'Power Points & Switches', 'Power & Data'),
+    (['light', 'lights', 'lighting', 'downlight', 'led'], 'Lighting Installation', 'Lighting Installation & Upgrades'),
+    (['switchboard', 'fuse'], 'Switchboard Upgrades', 'Switchboard Upgrades'),
+    (['ev charger', 'car charger'], 'EV Charger Installation', 'EV Charger Installation'),
+    (['smoke alarm'], 'Smoke Alarms', 'Fire Alarms'),
+    (['tripping', 'no power', 'power out', 'electrical fault'], 'Fault Finding & Repairs', 'Electrical Fault Finding'),
+    (['heat pump', 'heatpump'], 'Heat Pump Installation', 'Heat Pumps'),
+    (['air con', 'aircon', 'air conditioning', 'air conditioner'], 'Air Conditioning', 'Commercial Air Conditioning'),
+    (['extractor', 'ventilation', 'condensation'], 'Bathroom Extractor Fans', 'Ventilation Systems'),
+    (['roof', 'roofer', 'roofing', 'tiles cracked'], 'Roof Repairs', 'Roof Repairs'),
+    (['gutter', 'gutters', 'spouting', 'downpipe'], 'Gutter Repairs', 'Gutters & Downpipes'),
+    (['deck', 'decking'], 'Deck Construction', 'Commercial Carpentry'),
+    (['fence', 'fencing'], 'Fencing', 'Fencing & Gates'),
+    (['pergola'], 'Pergolas', 'Commercial Carpentry'),
+    (['door', 'doors'], 'Doors', 'Doors & Hardware'),
+    (['cabinet', 'cabinetry', 'joinery'], 'Built-in Cabinets', 'Cabinetry'),
+    (['carpenter', 'builder', 'carpentry'], 'General Carpentry', 'Commercial Carpentry'),
+    (['paint', 'painter', 'painting', 'repaint'], 'Interior Painting', 'Painting'),
+    (['exterior paint', 'paint the house', 'outside of the house'], 'Exterior Painting', 'Painting'),
+    (['gib', 'plasterboard'], 'Gib Installation', 'Gib Installation'),
+    (['plaster', 'plastering'], 'Plastering', 'Plastering'),
+    (['wallpaper'], 'Wallpaper Installation', 'Painting'),
+    (['carpet laying', 'new carpet'], 'Carpet Installation', 'Flooring'),
+    (['tile', 'tiles', 'tiling', 'tiler'], 'Floor & Wall Tiling', 'Tiling'),
+    (['floor', 'flooring', 'floorboards', 'laminate', 'vinyl'], 'Floor Repairs', 'Flooring'),
+    (['kitchen renovation', 'new kitchen', 'kitchen reno'], 'Kitchen Renovations', 'Hospitality Fit-outs'),
+    (['bathroom renovation', 'bathroom reno', 'new bathroom'], 'Bathroom Renovations', 'Bathrooms & Amenities'),
+    (['renovation', 'extension', 'alteration'], 'Home Alterations', 'Office Renovations'),
+    (['driveway', 'concrete'], 'Driveways', 'Concrete Repairs'),
+    (['excavation', 'digger'], 'Excavation', 'Concrete Repairs'),
+    (['window', 'glass', 'glazing', 'double glazing'], 'Glass Replacement', 'Glass Replacement'),
+    (['cctv', 'security camera', 'camera'], 'CCTV Installation', 'CCTV Installation'),
+    (['alarm', 'burglar'], 'Alarm Systems', 'Alarm Systems'),
+    (['wifi', 'wi-fi', 'internet', 'network'], 'Wi-Fi Installation', 'Wi-Fi Installation'),
+    (['tv mount', 'mount tv', 'tv on the wall'], 'TV Wall Mounting', 'Communications Infrastructure'),
+    (['solar', 'solar panel'], 'Solar Panel Installation', 'Commercial Solar'),
+    (['battery'], 'Home Battery Installation', 'Battery Storage'),
+    (['pool', 'swimming pool'], 'Swimming Pool Installation', 'Building Upgrades'),
+    (['spa', 'hot tub'], 'Spa Pool Installation', 'Building Upgrades'),
+    (['insulation', 'insulate'], 'Ceiling Insulation', 'Building Upgrades'),
+    (['dishwasher'], 'Dishwashers', 'Kitchens'),
+    (['oven install', 'cooktop', 'hob'], 'Ovens & Cooktops', 'Kitchens'),
+    (['washing machine'], 'Washing Machines', 'Commercial Plumbing'),
+    (['rangehood'], 'Rangehoods', 'Extraction Systems'),
+    (['asbestos'], 'Asbestos Removal (Licensed)', 'Building Repairs'),
+    (['demolition', 'demolish'], 'Demolition', 'Building Alterations'),
+    (['welding', 'welder', 'metal'], 'Welding & Metal Fabrication', 'Building Repairs'),
+    (['handyman', 'odd jobs', 'fix', 'repair', 'broken'], 'Handyman Services', 'Commercial Handyman'),
+    (['mow', 'mowing', 'lawn', 'grass', 'lawns'], 'Lawn Mowing', 'Commercial Lawn Mowing'),
+    (['fertilise', 'fertilize', 'lawn care', 'patchy lawn'], 'Lawn Care & Fertilising', 'Grounds Maintenance Contracts'),
+    (['turf', 'new lawn', 'lawn seed', 're-sow'], 'New Lawns & Turf Laying', 'Grounds Maintenance Contracts'),
+    (['garden', 'gardener', 'gardening', 'tidy up'], 'Garden Maintenance', 'Grounds Maintenance Contracts'),
+    (['weed', 'weeds', 'weeding', 'mulch', 'bark'], 'Weeding & Mulching', 'Weed Control & Spraying'),
+    (['hedge', 'hedges'], 'Hedge Trimming', 'Hedge & Shrub Maintenance'),
+    (['prune', 'pruning', 'shrub'], 'Pruning', 'Hedge & Shrub Maintenance'),
+    (['tree', 'trees', 'arborist', 'felling'], 'Tree Felling & Removal', 'Tree Care & Arborist'),
+    (['stump'], 'Stump Grinding', 'Tree Care & Arborist'),
+    (['planting', 'plants', 'flower', 'flowers', 'vege garden'], 'Planting & Garden Makeovers', 'Interior Plant Care'),
+    (['green waste', 'garden waste', 'rubbish'], 'Green Waste Removal', 'Commercial Green Waste Removal'),
+    (['irrigation', 'sprinkler', 'watering'], 'Garden Irrigation', 'Irrigation Maintenance'),
+    (['landscape', 'landscaping', 'landscaper'], 'Landscape Design', 'Commercial Landscape Design'),
+    (['garden bed', 'edging', 'raised bed'], 'Garden Beds & Edging', 'Commercial Landscape Construction'),
+    (['paving', 'pavers', 'path', 'pathway'], 'Paving & Pathways', 'Paving & Hardscaping'),
+    (['retaining wall'], 'Landscape Retaining Walls', 'Commercial Retaining Walls'),
+    (['patio', 'courtyard', 'outdoor area'], 'Outdoor Living Areas', 'Commercial Landscape Construction'),
+    (['artificial turf', 'artificial grass', 'fake grass'], 'Artificial Turf', 'Commercial Artificial Turf'),
+    (['water feature', 'pond', 'fountain'], 'Water Features', 'Commercial Landscape Construction'),
+    (['garden lighting', 'outdoor lighting'], 'Garden Lighting', 'Outdoor & Amenity Lighting'),
+    (['drainage', 'soggy', 'waterlogged', 'stormwater'], 'Section Drainage', 'Stormwater & Drainage'),
+    (['section clearing', 'clear the section', 'overgrown', 'dirt', 'earth'], 'Section Clearing', 'Commercial Landscape Construction'),
+    (['clean', 'cleaner', 'cleaning', 'housekeeping'], 'Regular House Cleaning', 'Office Cleaning'),
+    (['deep clean', 'spring clean'], 'Deep Cleaning', "Builders' Clean"),
+    (['end of tenancy', 'bond clean', 'vacate clean', 'end of lease'], 'End of Tenancy Cleaning', 'Body Corporate Cleaning'),
+    (['moving out', 'move out', 'moving in', 'move in'], 'Move In / Move Out Cleaning', 'Office Cleaning'),
+    (['carpet clean', 'carpet shampoo', 'stain'], 'Carpet Cleaning', 'Carpet & Hard Floor Care'),
+    (['couch', 'sofa', 'upholstery'], 'Upholstery Cleaning', 'Carpet & Hard Floor Care'),
+    (['window clean', 'windows cleaned', 'clean windows'], 'Window Cleaning', 'Commercial Window Cleaning'),
+    (['oven clean'], 'Oven Cleaning', 'Office Cleaning'),
+    (['water blast', 'waterblast', 'pressure wash', 'water blasting'], 'Water Blasting', 'Commercial Water Blasting'),
+    (['house wash', 'soft wash', 'wash the house'], 'House Washing', 'Commercial Water Blasting'),
+    (['gutter clean', 'clean gutters', 'clean the gutters'], 'Gutter Cleaning', 'Commercial Water Blasting'),
+    (['moss', 'lichen', 'roof clean'], 'Roof Cleaning & Moss Treatment', 'Commercial Water Blasting'),
+    (['builders clean', 'after builders', 'construction clean'], 'After-Builders Cleaning', "Builders' Clean"),
+    (['mould', 'mold', 'mildew'], 'Mould Removal', 'Office Cleaning'),
+    (['office clean', 'office cleaning'], 'Regular House Cleaning', 'Office Cleaning'),
+    (['washroom', 'sanitary', 'hygiene'], 'Deep Cleaning', 'Washroom Hygiene Services'),
+    (['locksmith', 'locked out', 'lock change', 'rekey', 'new locks'], 'Locksmith Services', None),
+    (['builder', 'renovation', 'renovate'], 'Builders & Renovations', None),
+    (['brick', 'bricklayer', 'masonry', 'block wall'], 'Bricklaying & Masonry', None),
+    (['arborist', 'tree surgeon', 'tree trimming'], 'Arborist & Tree Services', None),
+    (['gate', 'gates'], 'Gates', None),
+    (['pest', 'pests', 'rats', 'mice', 'rodent', 'rodents', 'rats in the roof', 'mice in the', 'cockroach', 'wasps', 'fleas', 'borer'], 'Pest Control', None),
+    (['chimney', 'flue', 'duct clean'], 'Chimney & Duct Cleaning', None),
+    (['appliance repair', 'fridge repair', 'washing machine repair', 'oven repair', 'broken dishwasher'], 'Appliance Repairs', None),
+    (['computer', 'laptop', 'printer', 'home it', 'tech support'], 'Home IT Support', None),
+    (['inspection', 'inspector', 'pre-purchase', 'building report', 'builders report'], 'Building & Property Inspections', None),
+    (['engineer', 'structural engineer', 'building services'], 'Building Service Engineering', None),
+    (['architect', 'draughtsman', 'drafting', 'house plans'], 'Architecture & Drafting', None),
+    (['rubbish', 'junk', 'skip bin', 'dump run'], 'Rubbish & Green Waste Removal', None),
+    (['man with a van', 'local move', 'movers', 'furniture delivery'], 'Man with a Van / Local Movers', None),
+    (['house move', 'removalist', 'removals', 'moving house'], 'Full-Service House Removals', None),
+    (['elderly', 'caregiver', 'home help', 'independent living'], 'Elderly & Independent Living Support', None),
+    (['pet', 'dog walking', 'dog grooming', 'pet sitting', 'cat sitting'], 'Pet Care & Grooming', None),
+    (['tutor', 'tutoring', 'music lessons', 'piano lessons', 'homework'], 'In-Home Tutoring & Music Lessons', None),
+    (['mortgage', 'insurance advice', 'insurance adviser'], 'Insurance & Mortgage Advisory', None),
+    (['admin help', 'tech coaching', 'smartphone help', 'paperwork'], 'Personal Tech & Admin Coaching', None),
+    (["hood clean", "kitchen exhaust", "canopy clean", "extraction hood"], None, "Commercial Kitchen & Hood Cleaning"),
 ]
+
 
 
 def _detect_service(text: str, service_type: str = "residential") -> List[Dict[str, Any]]:
     import re
-    taxonomy = RESIDENTIAL_TAXONOMY
+    taxonomy = COMMERCIAL_TAXONOMY if service_type == "commercial" else RESIDENTIAL_TAXONOMY
     t = " " + re.sub(r"[^a-z0-9\s-]", " ", text.lower()) + " "
     words = set(re.findall(r"[a-z]{4,}", t))
     by_name = {s["name"]: (c, s) for c in taxonomy for s in c["subcategories"]}
     scores: Dict[str, float] = {}
-    for phrases, res_sub in SERVICE_KEYWORDS:
-        name = res_sub
+    for phrases, res_sub, com_sub in SERVICE_KEYWORDS:
+        name = com_sub if service_type == "commercial" else res_sub
+        if not name:
+            continue
         if name not in by_name:
             continue
         for ph in phrases:
@@ -3010,6 +3136,14 @@ async def detect_service(text: str, service_type: str = "residential"):
     """Guess the job category/subcategory from a free-text job description."""
     matches = _detect_service(text[:1000], service_type)
     return {"match": matches[0] if matches else None, "alternatives": matches[1:]}
+
+
+@api.get("/services/commercial-taxonomy/{category_id}")
+async def commercial_taxonomy_category(category_id: str):
+    for c in COMMERCIAL_TAXONOMY:
+        if c["id"] == category_id:
+            return {"id": c["id"], "name": c["name"], "icon": c["icon"], "color": c["color"], "subcategories": c["subcategories"]}
+    raise HTTPException(status_code=404, detail="Category not found")
 
 
 @api.get("/services/residential-taxonomy/{category_id}")
@@ -3695,21 +3829,417 @@ async def seed_data():
                 })
 
 
-async def purge_commercial_data():
-    """Residential-only app: remove any commercial jobs (and their bids) and commercial properties. Idempotent."""
-    try:
-        jobs = await db.jobs.find({"service_type": {"$ne": "residential", "$exists": True}}, {"job_id": 1, "_id": 0}).to_list(None)
-        job_ids = [j["job_id"] for j in jobs]
-        if job_ids:
-            await db.bids.delete_many({"job_id": {"$in": job_ids}})
-            await db.jobs.delete_many({"job_id": {"$in": job_ids}})
-        # Rentals are homes: keep them as residential. Commercial / mixed-use properties are removed.
-        await db.properties.update_many({"property_type": "rental"}, {"$set": {"property_type": "residential"}})
-        props = await db.properties.delete_many({"property_type": {"$in": ["commercial", "mixed"]}})
-        if job_ids or props.deleted_count:
-            logging.info(f"Removed {len(job_ids)} commercial jobs and {props.deleted_count} commercial properties")
-    except Exception as e:
-        logging.error(f"Commercial data cleanup failed: {e}")
+
+# ---------------- PROVIDER SPECIALIZATIONS + MATCHING ENGINE ----------------
+PRICING_TYPES = ("small_fixed", "hourly", "large_quote")
+BUSINESS_SIZES = ("solo", "small_team", "medium_enterprise")
+AVAILABILITY = ("available", "busy")
+SERVICE_TRACKS = ("residential", "commercial")
+OPEN_JOB_STATUSES = ("open", "matched")
+
+
+def _tax_index(service_type: str) -> Dict[str, Dict[str, Any]]:
+    return COMMERCIAL_TAXONOMY_INDEX if service_type == "commercial" else RESIDENTIAL_TAXONOMY_INDEX
+
+
+async def notify(user_id: str, kind: str, title: str, body: str = "", link: Optional[str] = None):
+    await db.notifications.insert_one({
+        "notification_id": f"ntf_{uuid.uuid4().hex[:10]}", "user_id": user_id, "type": kind,
+        "title": title, "body": body, "link": link, "read": False,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+
+def _area_ok(profile: Dict[str, Any], job: Dict[str, Any]) -> bool:
+    """Service-area check: listed suburbs must appear in the job location; otherwise fall back to radius."""
+    suburbs = [x.strip().lower() for x in (profile.get("service_area_suburbs") or []) if x and x.strip()]
+    loc = f"{job.get('location_suburb') or ''} {job.get('location') or ''}".lower()
+    if suburbs:
+        return any(sb in loc for sb in suburbs)
+    radius = profile.get("service_radius_km")
+    if radius and profile.get("latitude") is not None and job.get("location_lat") is not None:
+        return _haversine_km(profile["latitude"], profile["longitude"], job["location_lat"], job["location_lng"]) <= radius
+    return True
+
+
+def _haversine_km(lat1, lon1, lat2, lon2) -> float:
+    import math
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+async def dispatch_job(job: Dict[str, Any]) -> int:
+    """Strict specialization filter → one JobMatch per qualifying provider + dashboard alert. Idempotent."""
+    q: Dict[str, Any] = {"service_type": job.get("service_type", "residential"), "category_id": job["category"],
+                         "pricing_modes": job.get("pricing_type", "large_quote")}
+    if job.get("subcategory"):
+        q["subcategory_id"] = job["subcategory"]
+    specs = await db.provider_specializations.find(q, {"_id": 0, "provider_id": 1}).to_list(None)
+    provider_ids = list({sp["provider_id"] for sp in specs} - {job.get("client_id"), job.get("approver_id")})
+    if not provider_ids:
+        return 0
+    profiles = await db.provider_profiles.find({"user_id": {"$in": provider_ids}}, {"_id": 0}).to_list(None)
+    existing = {m["provider_id"] for m in await db.job_matches.find({"job_id": job["job_id"]}, {"provider_id": 1, "_id": 0}).to_list(None)}
+    created = 0
+    for prof in profiles:
+        tracks = prof.get("service_tracks") or list(SERVICE_TRACKS)
+        if job.get("service_type", "residential") not in tracks or not _area_ok(prof, job):
+            continue
+        if prof["user_id"] in existing:
+            continue
+        await db.job_matches.insert_one({
+            "match_id": f"mt_{uuid.uuid4().hex[:10]}", "job_id": job["job_id"], "provider_id": prof["user_id"],
+            "provider_name": prof.get("business_name", ""), "match_status": "notified",
+            "quote_amount": None, "message": None, "available_from": None,
+            "created_at": datetime.now(timezone.utc), "responded_at": None,
+        })
+        await notify(prof["user_id"], "job_match", "New matched job",
+                     f"{job.get('title')} · {job.get('location') or ''}".strip(" ·"), "/provider/dashboard")
+        created += 1
+    total = len(existing) + created
+    upd: Dict[str, Any] = {"matched_count": total}
+    if total and job.get("status") == "open":
+        upd["status"] = "matched"
+    await db.jobs.update_one({"job_id": job["job_id"]}, {"$set": upd})
+    return total
+
+
+class SpecializationIn(BaseModel):
+    service_type: str
+    category_id: str
+    subcategory_id: str
+    pricing_modes: List[str]
+    rate: Optional[float] = None
+
+
+class OnboardingIn(BaseModel):
+    business_name: str
+    business_size: str
+    service_area_suburbs: List[str] = []
+    service_tracks: List[str]
+    bio: Optional[str] = None
+    specializations: List[SpecializationIn]
+
+
+def _validated_specs(items: List[SpecializationIn], tracks: List[str], provider_id: str) -> List[Dict[str, Any]]:
+    if not items:
+        raise HTTPException(status_code=400, detail="Select at least one category and subcategory")
+    out, seen = [], set()
+    for it in items:
+        if it.service_type not in SERVICE_TRACKS:
+            raise HTTPException(status_code=400, detail="service_type must be residential or commercial")
+        if it.service_type not in tracks:
+            raise HTTPException(status_code=400, detail=f"You don't serve {it.service_type} clients — update your service tracks")
+        meta = _tax_index(it.service_type).get(f"{it.category_id}/{it.subcategory_id}")
+        if not meta:
+            raise HTTPException(status_code=400, detail=f"Unknown {it.service_type} service {it.category_id}/{it.subcategory_id}")
+        modes = [m for m in dict.fromkeys(it.pricing_modes) if m in PRICING_TYPES]
+        if not modes:
+            raise HTTPException(status_code=400, detail=f"Choose at least one job size for {meta['sub_name']}")
+        if it.rate is not None and not (0 < it.rate <= 100000):
+            raise HTTPException(status_code=400, detail="Rate must be a positive number")
+        key = (it.service_type, it.category_id, it.subcategory_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "spec_id": f"spec_{uuid.uuid4().hex[:10]}", "provider_id": provider_id, "service_type": it.service_type,
+            "category_id": it.category_id, "category_name": meta["category_name"],
+            "subcategory_id": it.subcategory_id, "subcategory_name": meta["sub_name"],
+            "pricing_modes": modes, "rate": it.rate, "created_at": datetime.now(timezone.utc),
+        })
+    return out
+
+
+async def _require_provider(user) -> None:
+    if user.get("role") != "provider":
+        raise HTTPException(status_code=403, detail="Only service providers can do this")
+
+
+@api.get("/providers/me/onboarding")
+async def get_onboarding(user=Depends(require_user)):
+    await _require_provider(user)
+    prof = await db.provider_profiles.find_one({"user_id": user["user_id"]}, {"_id": 0}) or {}
+    specs = await db.provider_specializations.find({"provider_id": user["user_id"]}, {"_id": 0}).to_list(None)
+    return {"profile": prof, "specializations": specs, "onboarded": bool(prof.get("onboarded")) and len(specs) > 0}
+
+
+@api.put("/providers/me/onboarding")
+async def save_onboarding(payload: OnboardingIn, user=Depends(require_user)):
+    await _require_provider(user)
+    if not payload.business_name.strip():
+        raise HTTPException(status_code=400, detail="Business name is required")
+    if payload.business_size not in BUSINESS_SIZES:
+        raise HTTPException(status_code=400, detail="business_size must be solo, small_team or medium_enterprise")
+    tracks = [t for t in dict.fromkeys(payload.service_tracks) if t in SERVICE_TRACKS]
+    if not tracks:
+        raise HTTPException(status_code=400, detail="Choose Residential, Commercial or both")
+    specs = _validated_specs(payload.specializations, tracks, user["user_id"])
+    suburbs = [x.strip() for x in payload.service_area_suburbs if x and x.strip()][:50]
+    cats = sorted({sp["category_id"] for sp in specs})
+    await db.provider_profiles.update_one({"user_id": user["user_id"]}, {"$set": {
+        "business_name": payload.business_name.strip(), "business_size": payload.business_size,
+        "service_area_suburbs": suburbs, "service_tracks": tracks, "categories": cats,
+        **({"bio": payload.bio.strip()} if payload.bio is not None else {}),
+        "onboarded": True,
+    }, "$setOnInsert": {"rating": 0.0, "reviews_count": 0, "jobs_completed": 0, "verified": False,
+                        "availability_status": "available"}}, upsert=True)
+    await db.provider_specializations.delete_many({"provider_id": user["user_id"]})
+    await db.provider_specializations.insert_many([dict(sp) for sp in specs])
+    # Pick up any open jobs that now match
+    open_jobs = await db.jobs.find({"status": {"$in": list(OPEN_JOB_STATUSES)}, "approval_status": {"$ne": "pending"},
+                                    "category": {"$in": cats}}, {"_id": 0}).to_list(500)
+    for j in open_jobs:
+        await dispatch_job(j)
+    return await get_onboarding(user)
+
+
+@api.get("/providers/{provider_id}/specializations")
+async def provider_specializations(provider_id: str, user=Depends(require_user)):
+    return await db.provider_specializations.find({"provider_id": provider_id}, {"_id": 0, "provider_id": 0}).sort("category_name", 1).to_list(None)
+
+
+# ---- Matches (DispatchQueue) ----
+def _strip_private(job: Dict[str, Any], awarded: bool) -> Dict[str, Any]:
+    return job if awarded else {k: v for k, v in job.items() if k != "access_notes"}
+
+
+@api.get("/matches/mine")
+async def my_matches(user=Depends(require_user)):
+    await _require_provider(user)
+    matches = await db.job_matches.find({"provider_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    jobs = await db.jobs.find({"job_id": {"$in": [m["job_id"] for m in matches]}}, {"_id": 0}).to_list(None)
+    for j in jobs:
+        meta = _tax_index(j.get("service_type", "residential")).get(f"{j.get('category')}/{j.get('subcategory')}")
+        if meta:
+            j["category_name"], j["subcategory_name"] = meta["category_name"], meta["sub_name"]
+    jm = {j["job_id"]: j for j in jobs}
+    out = []
+    for m in matches:
+        j = jm.get(m["job_id"])
+        if j:
+            m["job"] = _strip_private(j, m["match_status"] == "awarded")
+            out.append(m)
+    return out
+
+
+async def _own_match(match_id: str, user) -> tuple:
+    await _require_provider(user)
+    m = await db.job_matches.find_one({"match_id": match_id}, {"_id": 0})
+    if not m or m["provider_id"] != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Match not found")
+    job = await db.jobs.find_one({"job_id": m["job_id"]}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return m, job
+
+
+class MatchAcceptIn(BaseModel):
+    message: Optional[str] = None
+    available_from: Optional[str] = None
+
+
+class MatchQuoteIn(BaseModel):
+    amount: float
+    message: Optional[str] = None
+
+
+async def _respond(m, job, update: Dict[str, Any], note: str):
+    if job["status"] not in OPEN_JOB_STATUSES or m["match_status"] in ("closed", "awarded", "declined"):
+        raise HTTPException(status_code=400, detail="This job is no longer open")
+    update["responded_at"] = datetime.now(timezone.utc)
+    await db.job_matches.update_one({"match_id": m["match_id"]}, {"$set": update})
+    await notify(job.get("billing_target") == "approver" and job.get("approver_id") or job["client_id"],
+                 "match_response", note, job.get("title", ""), f"/jobs/{job['job_id']}")
+    return await db.job_matches.find_one({"match_id": m["match_id"]}, {"_id": 0})
+
+
+@api.post("/matches/{match_id}/accept")
+async def accept_match(match_id: str, payload: MatchAcceptIn, user=Depends(require_user)):
+    m, job = await _own_match(match_id, user)
+    if job.get("pricing_type") == "large_quote":
+        raise HTTPException(status_code=400, detail="Large projects need a fixed quote — use Submit quote")
+    return await _respond(m, job, {"match_status": "accepted", "message": (payload.message or "").strip()[:1000] or None,
+                                   "available_from": payload.available_from},
+                          f"{m.get('provider_name') or 'A pro'} accepted your job")
+
+
+@api.post("/matches/{match_id}/quote")
+async def quote_match(match_id: str, payload: MatchQuoteIn, user=Depends(require_user)):
+    m, job = await _own_match(match_id, user)
+    if not (0 < payload.amount <= 10_000_000):
+        raise HTTPException(status_code=400, detail="Quote must be a positive amount")
+    return await _respond(m, job, {"match_status": "quote_submitted", "quote_amount": round(payload.amount, 2),
+                                   "message": (payload.message or "").strip()[:2000] or None},
+                          f"New quote from {m.get('provider_name') or 'a pro'}: ${payload.amount:,.0f}")
+
+
+@api.post("/matches/{match_id}/decline")
+async def decline_match(match_id: str, user=Depends(require_user)):
+    m, job = await _own_match(match_id, user)
+    if m["match_status"] in ("awarded",):
+        raise HTTPException(status_code=400, detail="You've already been awarded this job")
+    await db.job_matches.update_one({"match_id": match_id}, {"$set": {"match_status": "declined", "responded_at": datetime.now(timezone.utc)}})
+    return {"ok": True}
+
+
+async def _client_job(job_id: str, user) -> Dict[str, Any]:
+    job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if user["user_id"] not in (job.get("client_id"), job.get("approver_id")):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    return job
+
+
+@api.get("/jobs/{job_id}/matches")
+async def job_matches(job_id: str, user=Depends(require_user)):
+    await _client_job(job_id, user)
+    matches = await db.job_matches.find({"job_id": job_id}, {"_id": 0}).sort("created_at", 1).to_list(None)
+    profs = await db.provider_profiles.find({"user_id": {"$in": [m["provider_id"] for m in matches]}},
+                                            {"_id": 0, "user_id": 1, "business_name": 1, "rating": 1, "reviews_count": 1,
+                                             "verified": 1, "business_size": 1, "availability_status": 1, "hourly_rate": 1}).to_list(None)
+    pm = {p["user_id"]: p for p in profs}
+    for m in matches:
+        m["provider"] = pm.get(m["provider_id"], {})
+    responded = [m for m in matches if m["match_status"] in ("accepted", "quote_submitted", "awarded")]
+    return {"notified": len(matches), "responded": len(responded), "matches": matches}
+
+
+class AwardIn(BaseModel):
+    match_id: str
+
+
+@api.post("/jobs/{job_id}/award")
+async def award_job(job_id: str, payload: AwardIn, user=Depends(require_user)):
+    job = await _client_job(job_id, user)
+    if job["status"] not in OPEN_JOB_STATUSES:
+        raise HTTPException(status_code=400, detail="This job has already been awarded")
+    m = await db.job_matches.find_one({"match_id": payload.match_id, "job_id": job_id}, {"_id": 0})
+    if not m or m["match_status"] not in ("accepted", "quote_submitted"):
+        raise HTTPException(status_code=400, detail="You can only award a pro who accepted or quoted")
+    prof = await db.provider_profiles.find_one({"user_id": m["provider_id"]}, {"_id": 0}) or {}
+    pt = job.get("pricing_type")
+    if m.get("quote_amount"):
+        amount = m["quote_amount"]
+    elif pt == "hourly":
+        amount = round((job.get("budget_or_estimate") or 1) * (prof.get("hourly_rate") or 85.0), 2)
+    else:
+        amount = job.get("budget_or_estimate") or job.get("budget_max") or 0
+    now = datetime.now(timezone.utc)
+    await db.job_matches.update_one({"match_id": m["match_id"]}, {"$set": {"match_status": "awarded"}})
+    await db.job_matches.update_many({"job_id": job_id, "match_id": {"$ne": m["match_id"]}}, {"$set": {"match_status": "closed"}})
+    await db.jobs.update_one({"job_id": job_id}, {"$set": {"status": "assigned", "assigned_provider_id": m["provider_id"], "awarded_at": now}})
+    # Keep invoices / timesheets / access-notes working: record the win as an accepted bid + booking
+    pro_user = await db.users.find_one({"user_id": m["provider_id"]}, {"_id": 0, "name": 1})
+    bid = {"bid_id": f"bid_{uuid.uuid4().hex[:10]}", "job_id": job_id, "provider_id": m["provider_id"],
+           "provider_name": prof.get("business_name") or (pro_user or {}).get("name", ""), "amount": amount,
+           "message": m.get("message") or "", "eta_days": 2, "status": "accepted", "created_at": now, "source": "match"}
+    await db.bids.insert_one(dict(bid))
+    sched = now + timedelta(days=2)
+    if job.get("preferred_date"):
+        try:
+            sched = datetime.strptime(job["preferred_date"][:10], "%Y-%m-%d").replace(hour=9, tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    booking = Booking(client_id=job["client_id"], client_name=user["name"], provider_id=m["provider_id"],
+                      provider_name=bid["provider_name"], job_id=job_id, category=job["category"], price=amount,
+                      scheduled_at=sched, address=job.get("location", "Auckland"))
+    await db.bookings.insert_one(booking.dict())
+    await notify(m["provider_id"], "job_awarded", "You won a job!", job.get("title", ""), "/provider/dashboard")
+    others = await db.job_matches.find({"job_id": job_id, "match_status": "closed"}, {"provider_id": 1, "_id": 0}).to_list(None)
+    for o in others:
+        await notify(o["provider_id"], "job_closed", "Job filled by another pro", job.get("title", ""), "/provider/dashboard")
+    return {"ok": True, "job_id": job_id, "assigned_provider_id": m["provider_id"], "amount": amount}
+
+
+class JobProgressIn(BaseModel):
+    status: str  # in_progress | done
+
+
+@api.post("/jobs/{job_id}/progress")
+async def job_progress(job_id: str, payload: JobProgressIn, user=Depends(require_user)):
+    job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if user["user_id"] not in (job.get("assigned_provider_id"), job.get("client_id")):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    allowed = {"assigned": ["in_progress", "done"], "in_progress": ["done"]}
+    if payload.status not in allowed.get(job["status"], []):
+        raise HTTPException(status_code=400, detail=f"Can't move a {job['status']} job to {payload.status}")
+    await db.jobs.update_one({"job_id": job_id}, {"$set": {"status": payload.status}})
+    other = job["client_id"] if user["user_id"] == job.get("assigned_provider_id") else job.get("assigned_provider_id")
+    if other:
+        await notify(other, "job_status", "Job started" if payload.status == "in_progress" else "Job completed",
+                     job.get("title", ""), f"/jobs/{job_id}")
+    return {"ok": True, "status": payload.status}
+
+
+# ---- Notifications ----
+@api.get("/notifications/mine")
+async def my_notifications(user=Depends(require_user)):
+    items = await db.notifications.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    unread = await db.notifications.count_documents({"user_id": user["user_id"], "read": False})
+    return {"unread": unread, "items": items}
+
+
+@api.post("/notifications/read-all")
+async def read_all_notifications(user=Depends(require_user)):
+    await db.notifications.update_many({"user_id": user["user_id"], "read": False}, {"$set": {"read": True}})
+    return {"ok": True}
+
+
+# ---- Seed: sample specializations so the matching engine works out of the box ----
+SEED_SPECS = {
+    "Demo Trade Co.": {"tracks": ["residential", "commercial"], "size": "small_team", "suburbs": [], "specs": [
+        ("residential", "general-home-maintenance", "Handyman Services", ["small_fixed", "hourly", "large_quote"], 85),
+        ("residential", "plumbing-gas", "Tap & Toilet Repairs", ["small_fixed", "hourly"], 95),
+        ("residential", "plumbing-gas", "Leak Repairs", ["small_fixed", "hourly", "large_quote"], 95),
+        ("commercial", "building-maintenance", "Commercial Handyman", ["hourly", "large_quote"], 110)]},
+    "Sarah Chen Plumbing": {"tracks": ["residential", "commercial"], "size": "solo",
+                            "suburbs": ["Auckland Central", "Ponsonby", "Grey Lynn", "Mount Eden", "Parnell"], "specs": [
+        ("residential", "plumbing-gas", "Tap & Toilet Repairs", ["small_fixed", "hourly"], 95),
+        ("residential", "plumbing-gas", "Hot Water Systems", ["hourly", "large_quote"], 95),
+        ("residential", "plumbing-gas", "Blocked Drains", ["small_fixed", "hourly"], 95),
+        ("commercial", "plumbing-gas", "Commercial Plumbing", ["hourly", "large_quote"], 120)]},
+    "MP Electrical": {"tracks": ["residential", "commercial"], "size": "medium_enterprise", "suburbs": [], "specs": [
+        ("residential", "electrical", "Power Points & Switches", ["small_fixed", "hourly"], 105),
+        ("residential", "electrical", "Switchboard Upgrades", ["large_quote"], 105),
+        ("commercial", "electrical", "LED Retrofits", ["large_quote"], 125),
+        ("commercial", "electrical", "Switchboard Upgrades", ["large_quote"], 125)]},
+    "SparkClean Services": {"tracks": ["residential", "commercial"], "size": "small_team", "suburbs": [], "specs": [
+        ("residential", "cleaning", "Regular House Cleaning", ["small_fixed", "hourly"], 55),
+        ("residential", "cleaning", "End of Tenancy Cleaning", ["small_fixed", "large_quote"], 55),
+        ("commercial", "commercial-cleaning", "Office Cleaning", ["hourly", "large_quote"], 65),
+        ("commercial", "commercial-cleaning", "Commercial Kitchen & Hood Cleaning", ["large_quote"], 80)]},
+}
+
+
+async def seed_specializations():
+    for biz, cfg in SEED_SPECS.items():
+        prof = await db.provider_profiles.find_one({"business_name": biz}, {"_id": 0, "user_id": 1})
+        if not prof or await db.provider_specializations.count_documents({"provider_id": prof["user_id"]}):
+            continue
+        docs = []
+        for st, cat, sub_name, modes, rate in cfg["specs"]:
+            meta = _tax_index(st).get(f"{cat}/{_slug(sub_name)}")
+            if not meta:
+                logging.warning(f"Seed spec not in taxonomy: {st} {cat}/{sub_name}")
+                continue
+            docs.append({"spec_id": f"spec_{uuid.uuid4().hex[:10]}", "provider_id": prof["user_id"], "service_type": st,
+                         "category_id": cat, "category_name": meta["category_name"], "subcategory_id": meta["sub_id"],
+                         "subcategory_name": meta["sub_name"], "pricing_modes": modes, "rate": rate,
+                         "created_at": datetime.now(timezone.utc)})
+        if docs:
+            await db.provider_specializations.insert_many(docs)
+        await db.provider_profiles.update_one({"user_id": prof["user_id"]}, {"$set": {
+            "service_tracks": cfg["tracks"], "business_size": cfg["size"], "service_area_suburbs": cfg["suburbs"],
+            "onboarded": True, "categories": sorted({d["category_id"] for d in docs})}})
+        await db.provider_profiles.update_one({"user_id": prof["user_id"], "availability_status": {"$exists": False}},
+                                              {"$set": {"availability_status": "available"}})
 
 
 @app.on_event("startup")
@@ -3720,7 +4250,11 @@ async def on_startup():
         logging.getLogger(__name__).error(f"Storage init failed: {e}")
     await seed_data()
     await seed_demo_accounts()
-    await purge_commercial_data()
+    await seed_specializations()
+    await db.job_matches.create_index([("provider_id", 1), ("created_at", -1)])
+    await db.job_matches.create_index([("job_id", 1), ("provider_id", 1)], unique=True)
+    await db.provider_specializations.create_index([("service_type", 1), ("category_id", 1), ("subcategory_id", 1)])
+    await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     logging.info("Pro Finder NZ startup complete")
 
 

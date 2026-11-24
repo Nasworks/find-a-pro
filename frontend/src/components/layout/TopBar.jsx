@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
+import NotificationBell from '../NotificationBell';
 import { useAuth } from '../../context/AuthContext';
 import ViewModeToggle from '../ViewModeToggle';
 
@@ -18,10 +19,7 @@ export default function TopBar() {
       </div>
       <div className="flex items-center gap-2">
         <ViewModeToggle />
-        <button className="relative p-2 rounded-lg hover:bg-accent transition-colors">
-          <Bell className="w-5 h-5 text-muted-foreground" />
-          <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary" />
-        </button>
+        <NotificationBell className="w-9 h-9 rounded-lg" />
         <Link to="/profile" className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-lg hover:bg-accent transition-colors">
           {user?.picture ? (
             <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full object-cover" />

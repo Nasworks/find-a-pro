@@ -1,0 +1,41 @@
+{
+  "summary": "Tested the residential-only change and the taxonomy merge end to end. Backend: the new test_iter21_residential_only.py passes 21/21. Taxonomy is 25 categories / 179 subs with all new ones present, no duplicate sub, category names or ids, and no 'commercial' text. /services/taxonomy/commercial and /services/commercial-taxonomy(/electrical) return 404. Commercial jobs get 400. Commercial and mixed properties get 400 on POST and PATCH. Jobs with the new subs (pest-control, in-home-tutoring) post fine. Detect maps every requested keyword correctly. The DB has 0 non-residential jobs and 0 commercial/mixed properties. Frontend: no 'Commercial' on the landing page, home, Book panel, /post-job, ServicePicker, Profile property dialog, PropertyDashboard Add Property, facilities, landlord, provider or insurance pages. Landing headline and facilities card text are correct. The facilities dashboard uses apartment/body corporate wording with no 'SLA', and the sidebar has 'Maintenance Requests'. Search suggestions for pest, locksmith, tutor, arborist, chimney, 'man with' and inspection all work. Booking Pest Control (Book -> Describe -> Post Job -> details) posted a cleaning/pest-control residential job. On classic /post-job, 'locked out' auto-detects Locksmith Services, and picking In-Home Tutoring and posting works. Find Providers with the Pest Control filter returns 1. Mobile 390px Book panel has no overflow. One regression found: address search is broken because photon.komoot.io can't be reached.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/address/search", "issue": "Returns {source:'error', results:[]} on every query. Google key is invalid and the OSM fallback (photon.komoot.io) fails with 'All connection attempts failed'; curl from the container to photon also fails (000), while nominatim.openstreetmap.org returns 200. Saved-property and job address autocomplete shows no suggestions until Photon comes back. Not caused by this change. Suggest adding a Nominatim fallback when Photon fails."},
+      {"endpoint": "SERVICE_KEYWORDS (server.py ~L2860-2978)", "issue": "Some keywords map to more than one sub: 'builder' -> General Carpentry and Builders & Renovations, 'rubbish' -> Green Waste Removal and Rubbish & Green Waste Removal, 'arborist' -> Tree Felling and Arborist. Leftover office wording: 'office clean' -> Regular House Cleaning, 'washroom/sanitary' -> Deep Cleaning. Detection still ranks the right one for the tested phrases, but this is worth tidying."},
+      {"endpoint": "GET /api/services/residential-taxonomy", "issue": "Docstring still says '18-category'. Cosmetic."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PropertyDashboard Add Property", "issue": "Add Property buttons and dialog inputs have no data-testid. addProp has no try/catch or error toast.", "selector": "button:has-text('Add Property')", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Address autocomplete (Profile My properties, job 'Search another address')", "issue": "No suggestions because the backend address search errors (Photon unreachable, see backend minor)", "affected_selectors": ["[data-testid='property-address']", "[data-testid='post-job-location-suggestions']"]}
+    ],
+    "design_issues": [
+      {"screen": "Facilities dashboard", "issues": ["Mock data in FacilitiesDashboard.jsx still uses an 'sla' field name. The UI shows 'Response: 4h response', which repeats 'response'."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter21_residential_only.py", "/app/backend/tests/test_services_taxonomy.py", "/app/backend/tests/test_iter18_services_detect_uploads.py", "/app/backend/tests/test_iter20_properties_address.py", "/app/test_reports/pytest/pytest_iter21.xml", "/app/test_reports/pytest/pytest_iter21_full.xml"],
+  "action_items": [
+    "Address search: add a Nominatim fallback (or retry) when Photon fails. Photon is currently unreachable from the backend, so the address search returns nothing.",
+    "test_iter16_removed_modules.py and test_iter17_invoice_send_service_area.py hard-code JOB_ID job_3f75aa7134. That was a commercial job and purge_commercial_data deleted it (log: 'Removed 1 commercial jobs'), so 6 invoice tests now 404. Seed or create a residential job with an accepted bid for invoice regression tests.",
+    "Remove duplicate or office keywords in SERVICE_KEYWORDS and fix the '18-category' docstring",
+    "Add data-testids and error handling to the PropertyDashboard Add Property dialog"
+  ],
+  "critical_code_review_comments": [
+    "create_job: `elif payload.category in known_cats: pass` has no else. Any unknown category without a subcategory is still accepted. This is intended for legacy categories but leaves category unvalidated.",
+    "_validate_property_fields rejects PATCH {property_type: null} with 400. Fine, but it could ignore None instead.",
+    "purge_commercial_data runs on every startup and deletes jobs and bids but not related messages, conversations or invoices (none were found for the purged job). It is idempotent, so it is fine.",
+    "server.py is 3744 lines. Split the taxonomy, keywords and properties into modules."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter21_residential_only.py", "/app/backend/tests/test_services_taxonomy.py", "/app/backend/tests/test_iter18_services_detect_uploads.py", "/app/backend/tests/test_iter20_properties_address.py"],
+  "success_rate": {"backend": "100% of the residential-only and taxonomy features (21/21 iter21). Full suite 200/212: the failures are the stale invoice fixture (6), Photon outage (1) and pre-existing provider directory count tests expecting 9 when there are 10 (5).", "frontend": "100% of the requested flows"},
+  "seed_data_creation": "None kept. UI-created jobs job_14fc848d6f and job_8a90587c58 were deleted. The 4 TEST_ jobs and 2 qa-svc-cust users created by test_services_taxonomy.py were deleted by id. iter21 fixtures delete their own jobs and properties.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with `export REACT_APP_BACKEND_URL=...` and -n0. Some older modules read the env var at import and fail collection otherwise. Commercial assertions in the old tests were converted to 404/400 checks. Book flow: service-search-input -> service-suggestion-<sub_id> -> service-search-book -> booking-find-describe -> booking-mode-post -> booking-details-panel. There is no booking-type step any more. Demo customer properties: Home (main), Office (both residential). test_services_taxonomy.py registers throwaway users and does not clean up its jobs; delete them by id after running."
+}

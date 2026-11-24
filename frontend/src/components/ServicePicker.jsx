@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as LucideIcons from 'lucide-react';
-import { ChevronRight, Search, X, Home, Check, Loader2 } from 'lucide-react';
+import { ChevronRight, Search, X, Building2, Home, Check, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
@@ -10,15 +10,15 @@ import { useViewMode } from '../context/ViewModeContext';
 
 /**
  * ServicePicker
- * Rich hierarchical service picker for the residential home-services taxonomy (residential-only app).
+ * Rich hierarchical service picker for the residential (18 cats) OR commercial (15 cats) taxonomies.
  *
  * Props:
  *   open, onOpenChange     — dialog control
+ *   serviceType            — 'residential' | 'commercial'
  *   value                  — { category_id, subcategory_id } (optional, pre-highlights)
  *   onSelect               — callback with { category_id, category_name, category_icon, category_color, subcategory_id, subcategory_name }
  */
-export default function ServicePicker({ open, onOpenChange, value, onSelect }) {
-  const serviceType = 'residential';
+export default function ServicePicker({ open, onOpenChange, serviceType = 'residential', value, onSelect }) {
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState([]);
   const [activeCat, setActiveCat] = useState(null);
@@ -26,6 +26,7 @@ export default function ServicePicker({ open, onOpenChange, value, onSelect }) {
   const [meta, setMeta] = useState({ total_categories: 0, total_subcategories: 0 });
   const { isMobile } = useViewMode();
 
+  const isCommercial = serviceType === 'commercial';
 
   useEffect(() => {
     if (!open) return;
@@ -42,7 +43,7 @@ export default function ServicePicker({ open, onOpenChange, value, onSelect }) {
       })
       .catch(() => setCategories([]))
       .finally(() => setLoading(false));
-  }, [open, value?.category_id]);
+  }, [open, serviceType, value?.category_id]);
 
   const filtered = useMemo(() => {
     if (!q.trim()) return null;
@@ -68,17 +69,17 @@ export default function ServicePicker({ open, onOpenChange, value, onSelect }) {
     onOpenChange(false);
   };
 
-  const HeaderIcon = Home;
-  const label = 'Residential Home Services';
-  const gradient = 'from-emerald-500/5 via-primary/5';
-  const chipCls = 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
+  const HeaderIcon = isCommercial ? Building2 : Home;
+  const label = isCommercial ? 'Commercial Services' : 'Residential Home Services';
+  const gradient = isCommercial ? 'from-primary/5 via-blue-500/5' : 'from-emerald-500/5 via-primary/5';
+  const chipCls = isCommercial ? 'bg-primary/10 text-primary border-primary/20' : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden max-h-[85vh]" data-testid={`service-picker-${serviceType}`}>
         <DialogHeader className={`p-5 pb-3 border-b border-border bg-gradient-to-r ${gradient} to-transparent`}>
           <DialogTitle className="flex items-center gap-2 text-lg">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-500/10 text-emerald-600`}>
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isCommercial ? 'bg-primary/10 text-primary' : 'bg-emerald-500/10 text-emerald-600'}`}>
               <HeaderIcon className="w-4 h-4" />
             </div>
             {label}
@@ -95,7 +96,7 @@ export default function ServicePicker({ open, onOpenChange, value, onSelect }) {
               data-testid="service-picker-search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search — 'heat pump', 'painting', 'blocked drain'..."
+              placeholder={isCommercial ? "Search — 'LED', 'roof', 'CCTV', 'HVAC'..." : "Search — 'heat pump', 'painting', 'blocked drain'..."}
               className="pl-9 pr-9"
               autoFocus
             />

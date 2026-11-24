@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, Star } from 'lucide-react';
+import { Home as HomeIcon, Building2, Loader2, Star } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -35,7 +35,7 @@ export default function PropertyFormDialog({ open, onOpenChange, property, onSav
     const payload = {
       name: form.name.trim() || null,
       address: form.address.trim(),
-      property_type: 'residential',
+      property_type: form.property_type,
       bedrooms: form.bedrooms === '' ? null : Number(form.bedrooms),
       bathrooms: form.bathrooms === '' ? null : Number(form.bathrooms),
       access_notes: form.access_notes.trim() || null,
@@ -80,6 +80,17 @@ export default function PropertyFormDialog({ open, onOpenChange, property, onSav
                 onChange={(v) => set('address', v)}
                 onSelect={(p) => setForm((f) => ({ ...f, lat: p?.lat ?? null, lng: p?.lng ?? null }))}
               />
+            </div>
+          </div>
+          <div>
+            <Label>Property type</Label>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              {[{ v: 'residential', l: 'Residential', I: HomeIcon }, { v: 'commercial', l: 'Commercial', I: Building2 }].map(({ v, l, I }) => (
+                <button key={v} type="button" data-testid={`property-type-${v}`} onClick={() => set('property_type', v)}
+                  className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${form.property_type === v ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:border-primary/40'}`}>
+                  <I className="w-4 h-4" /> {l}
+                </button>
+              ))}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

@@ -1,17 +1,29 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Users, Package, TrendingUp, ClipboardList, DollarSign, Star, ShieldCheck, ChevronRight, Clock } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
+import MatchedJobsFeed from '../../components/MatchedJobsFeed';
+import SpecializationBadges from '../../components/SpecializationBadges';
+import { Settings2 } from 'lucide-react';
 
 export default function ProviderDashboard() {
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState({});
   const [jobs, setJobs] = useState([]);
+  const [specs, setSpecs] = useState(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    api.get('/providers/me/onboarding').then((r) => {
+      if (!r.data.onboarded) navigate('/provider/onboarding', { replace: true });
+      else setSpecs(r.data.specializations);
+    }).catch(() => setSpecs([]));
+  }, [navigate]);
 
   const load = useCallback(async () => {
     try {
@@ -64,6 +76,19 @@ export default function ProviderDashboard() {
           <QuickAction icon={Clock} title="Timesheet" desc="Track your time" color="bg-amber-500" to="/provider/timesheet" />
         </div>
       </div>
+
+      <div className="bg-card border border-border rounded-2xl p-5" data-testid="provider-specializations-card">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <div className="font-semibold text-foreground">My specializations</div>
+            <div className="text-xs text-muted-foreground">You're only matched with jobs in these services.</div>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => navigate('/provider/onboarding')} data-testid="provider-edit-specializations"><Settings2 className="w-3.5 h-3.5 mr-1" /> Edit</Button>
+        </div>
+        {specs && <SpecializationBadges specs={specs} />}
+      </div>
+
+      <MatchedJobsFeed />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard icon={DollarSign} label="Earnings" value={`$${Math.round(stats.earnings || 0)}`} color="text-emerald-500" />

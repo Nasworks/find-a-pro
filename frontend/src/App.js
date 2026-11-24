@@ -22,6 +22,7 @@ import Profile from './pages/client/Profile';
 import JobDetail from './pages/client/JobDetail';
 
 import ProviderDashboard from './pages/provider/ProviderDashboard';
+import ProviderOnboarding from './pages/provider/ProviderOnboarding';
 import ProviderJobBoard from './pages/provider/ProviderJobBoard';
 import ProviderEarnings from './pages/provider/ProviderEarnings';
 import ProviderCalendar from './pages/provider/ProviderCalendar';
@@ -95,6 +96,7 @@ function AppRouter() {
 
         {/* Provider */}
         <Route path="/provider/dashboard" element={<ProviderDashboard />} />
+        <Route path="/provider/onboarding" element={<ProviderOnboarding />} />
         <Route path="/provider/job-board" element={<ProviderJobBoard />} />
         <Route path="/provider/earnings" element={<ProviderEarnings />} />
         <Route path="/provider/calendar" element={<ProviderCalendar />} />

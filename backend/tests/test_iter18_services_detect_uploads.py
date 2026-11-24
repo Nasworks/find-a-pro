@@ -31,24 +31,20 @@ class TestTaxonomy:
         assert r.status_code == 200
         data = r.json()
         cats = data if isinstance(data, list) else data.get("categories", data)
-        assert len(cats) == 21
+        assert len(cats) == 25
         by_id = {c["id"]: c for c in cats}
         g = by_id["gardening-lawn"]
-        assert g["name"] == "Gardening & Lawn" and len(g["subcategories"]) == 12
+        assert g["name"] == "Gardening & Lawn" and len(g["subcategories"]) == 13
         names = {s["name"] for s in g["subcategories"]}
         assert {"Lawn Mowing", "Hedge Trimming", "Tree Felling & Removal"} <= names
         assert len(by_id["landscaping"]["subcategories"]) == 11
         c = by_id["cleaning"]
-        assert len(c["subcategories"]) == 14
+        assert len(c["subcategories"]) == 16
         assert {"End of Tenancy Cleaning", "Water Blasting", "Carpet Cleaning"} <= {s["name"] for s in c["subcategories"]}
 
-    def test_commercial_new_categories(self):
+    def test_commercial_taxonomy_removed(self):
         r = requests.get(f"{BASE_URL}/api/services/taxonomy/commercial")
-        assert r.status_code == 200
-        data = r.json()
-        cats = data if isinstance(data, list) else data.get("categories", data)
-        ids = {c["id"] for c in cats}
-        assert {"commercial-cleaning", "grounds-maintenance", "commercial-landscaping"} <= ids
+        assert r.status_code == 404
 
 
 # ---- Auto-detect ----
@@ -56,9 +52,8 @@ DETECT_CASES = [
     ("Leaking kitchen tap", "residential", "Plumbing & Gas", "Tap & Toilet Repairs"),
     ("need my lawns mowed", "residential", "Gardening & Lawn", "Lawn Mowing"),
     ("hedge overgrown", "residential", None, "Hedge Trimming"),
-    ("bond clean when I move out", "residential", "Cleaning", None),
+    ("bond clean when I move out", "residential", "Cleaning & Home Hygiene", None),
     ("moss on roof", "residential", None, "Roof Cleaning & Moss Treatment"),
-    ("office needs cleaning", "commercial", None, "Office Cleaning"),
 ]
 
 
