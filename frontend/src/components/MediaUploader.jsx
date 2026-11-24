@@ -10,7 +10,7 @@ const BACKEND = API.replace(/\/api$/, '');
 export const mediaSrc = (url) => (url?.startsWith('/api/') ? `${BACKEND}${url}` : url);
 export const isVideo = (url) => /\.(mp4|mov|webm|m4v|3gp|avi|mkv)$/i.test(url || '');
 
-export async function uploadFile(file, onProgress) {
+export async function uploadFile(file, onProgress = () => {}) {
   const { data: init } = await api.post('/uploads/init', { filename: file.name || 'capture', content_type: file.type, size: file.size });
   const total = Math.max(1, Math.ceil(file.size / CHUNK));
   for (let i = 0; i < total; i += 1) {

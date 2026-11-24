@@ -2451,6 +2451,9 @@ def _invoice_email_html(inv: Dict[str, Any], client_name: str, provider_name: st
 async def send_job_invoice(job_id: str, request: Request, user=Depends(require_user)):
     if await db.payment_transactions.find_one({"job_id": job_id, "payment_status": "paid"}):
         raise HTTPException(status_code=400, detail="This invoice has already been paid")
+    # A new invoice version supersedes any open checkout for the old amount
+    await db.payment_transactions.update_many({"job_id": job_id, "payment_status": "pending"},
+                                              {"$set": {"status": "superseded", "checkout_url": None}})
     job, provider_id = await _invoice_context(job_id, user)
     if user["user_id"] != provider_id:
         raise HTTPException(status_code=403, detail="Only the job's provider can send the invoice")
@@ -4129,6 +4132,14 @@ async def pay_invoice(job_id: str, payload: PayInvoiceIn, request: Request, user
         raise HTTPException(status_code=400, detail="Invalid origin")
     fees = _fee_breakdown(ctx["invoice"]["total"])
     job = ctx["job"]
+    version = ctx["invoice"].get("version")
+    # Reuse a recent open checkout for the same invoice version so a client can't open two payable sessions
+    recent = datetime.now(timezone.utc) - timedelta(hours=20)
+    open_tx = await db.payment_transactions.find_one({"job_id": job_id, "payment_status": "pending", "status": "initiated", "invoice_version": version,
+                                                      "amount": fees["total_charge"], "created_at": {"$gte": recent},
+                                                      "checkout_url": {"$exists": True}}, {"_id": 0})
+    if open_tx:
+        return {"checkout_url": open_tx["checkout_url"], "session_id": open_tx["session_id"], "reused": True}
     req = CheckoutSessionRequest(
         amount=float(fees["total_charge"]), currency="nzd",
         success_url=f"{origin}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
@@ -4140,7 +4151,8 @@ async def pay_invoice(job_id: str, payload: PayInvoiceIn, request: Request, user
     await db.payment_transactions.insert_one({
         "session_id": session.session_id, "job_id": job_id, "user_id": user["user_id"],
         "provider_id": job.get("assigned_provider_id"), "amount": fees["total_charge"], "currency": "nzd",
-        "fees": fees, "status": "initiated", "payment_status": "pending",
+        "fees": fees, "status": "initiated", "payment_status": "pending", "invoice_version": version,
+        "checkout_url": session.url,
         "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)})
     return {"checkout_url": session.url, "session_id": session.session_id}
 
@@ -4153,8 +4165,18 @@ async def _mark_paid(session_id: str):
         return  # already processed
     job_id = tx["job_id"]
     now = datetime.now(timezone.utc)
+    other_paid = await db.payment_transactions.find_one({"job_id": job_id, "payment_status": "paid", "session_id": {"$ne": session_id}}, {"_id": 0, "session_id": 1})
+    if other_paid:
+        # Second payment for the same job: keep a record so it can be refunded, don't double-count the payout
+        await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"duplicate_of": other_paid["session_id"], "needs_refund": True}})
+        logging.error(f"Duplicate payment for job {job_id}: {session_id} (first {other_paid['session_id']}) — refund required")
+        return
+    inv_now = await db.invoices.find_one({"job_id": job_id}, {"_id": 0, "version": 1})
+    if inv_now and tx.get("invoice_version") is not None and inv_now.get("version") != tx.get("invoice_version"):
+        logging.warning(f"Job {job_id} paid against invoice v{tx.get('invoice_version')} but current is v{inv_now.get('version')}")
     await db.jobs.update_one({"job_id": job_id}, {"$set": {"status": "done", "payment_status": "paid", "paid_at": now}})
-    await db.invoices.update_one({"job_id": job_id}, {"$set": {"payment_status": "paid", "paid_at": now}})
+    await db.invoices.update_one({"job_id": job_id}, {"$set": {"payment_status": "paid", "paid_at": now,
+                                                               "paid_version": tx.get("invoice_version"), "paid_amount": tx["fees"]["invoice_total"]}})
     await db.bookings.update_many({"job_id": job_id}, {"$set": {"status": "paid", "price": tx["fees"]["invoice_total"],
                                                                "provider_payout": tx["fees"]["provider_payout"],
                                                                "platform_fee": tx["fees"]["provider_platform_fee"]}})
@@ -4286,6 +4308,10 @@ async def save_receipt(payload: ReceiptIn, user=Depends(require_user)):
         raise HTTPException(status_code=400, detail="Choose a cost type")
     if not (0 < payload.total <= 1_000_000):
         raise HTTPException(status_code=400, detail="Total must be a positive amount")
+    if payload.gst is not None and not (0 <= payload.gst <= payload.total):
+        raise HTTPException(status_code=400, detail="GST must be between 0 and the total")
+    if payload.job_id and await db.payment_transactions.find_one({"job_id": payload.job_id, "payment_status": "paid"}):
+        raise HTTPException(status_code=400, detail="This job's invoice is already paid")
     if payload.file_url:
         await _own_file(payload.file_url, user)
     job_title = None

@@ -33,13 +33,17 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 - ✅ Provider documents (qualification / certification / police check, PDF or photo) → reviewer approval (`REVIEWER_EMAILS` = nasretm@gmail.com, page `/review/documents`) → ticks "Qualifications verified" / "Police checked" on profile, dashboard, matches panel. Credential files private to owner + reviewers.
 - ✅ Address search fallback: Google (invalid key) → Photon → Nominatim.
 
+## What's Implemented (2026-11 — Payments, receipts, project timeline)
+- ✅ Stripe Checkout (emergentintegrations, BYOK `STRIPE_API_KEY`; preview falls back to sk_test_emergent): `GET /payments/invoice/{job_id}/quote` (invoice total + 5% client fee + card fee 2.7%+30c grossed up; provider payout = total − 5%), `POST /payments/invoice/{job_id}/checkout` (NZD, reuses open session per invoice version), `GET /payments/status/{sid}`, webhook `/api/webhook/stripe`, `GET /payments/history`. On paid: job done+paid, invoice paid, booking paid with payout, provider notified; duplicate payments flagged `needs_refund`. Resending an invoice supersedes open checkouts. certifi CA bundle set for stripe SDK.
+- ✅ Client "Pay $X" button + fee disclosure dialog on sent invoices; /payment/success (polling) & /payment/cancel.
+- ✅ Receipt scanner `/provider/receipts` (camera/upload → Gemini 3.8 Flash reads supplier/date/total/GST/items → cost type chips materials | equipment_purchase | equipment_hire | third_party | travel | fuel | other → optional job link). Job receipts flow into the invoice as ex-GST lines.
+- ✅ Project timeline: `/jobs/{id}/timeline` GET/POST (6 default stages, updates w/ photos, client notification); `/provider/projects` Active Projects page; timeline on JobDetail for client & provider.
+- ✅ Hourly job disclaimer pop-up (materials/equipment hire extra; quote/receipt via messages before purchase).
+
 ## Pending user requests (not started)
-- Receipt scanner for providers with cost types (materials, equipment purchase, equipment hire, third-party service…).
 - Company main account + employee sub-accounts: send jobs to subs, GPS + mandatory timesheets (optional auto-timesheet from GPS), scanned receipts, main↔sub message board.
-- Active-job project timeline module (main account updates stage, sends updates to client).
-- Final invoice collation + manual edit (hours, travel/material/hire/fuel costs).
+- Final invoice manual edit (hours, travel/material/hire/fuel costs) — receipts + timesheets already collate automatically.
 - Camera/photo access in mobile mode everywhere media is uploaded (job posting, messages client/provider/worker).
-- Payments: Stripe (+ Google Pay / Apple Pay), pay from invoice/receipt, job history paid/unpaid, Stripe fee disclosure, 5% client platform fee + 5% deducted from provider.
 
 ## What's Implemented (2026-11 — Residential-only + expanded taxonomy)
 - ✅ **Residential-only app**: commercial taxonomy, endpoints (`/services/commercial-taxonomy*`, `/services/taxonomy/commercial` → 404) and all Residential/Commercial toggles removed (Book flow is now 1 Describe/Browse → 2 Post Job). POST /jobs and /properties accept only residential. Startup `purge_commercial_data()` deletes commercial jobs (+bids) and commercial/mixed properties, converts `rental` → residential (idempotent, also cleans production).

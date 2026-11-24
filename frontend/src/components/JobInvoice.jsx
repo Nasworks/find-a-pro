@@ -68,7 +68,7 @@ export const JobInvoice = ({ jobId, hideWhenEmpty = false }) => {
       </div>
       {!isProvider && inv.is_sent_copy && <PayInvoiceButton jobId={jobId} />}
       {isProvider && inv.payment_status === 'paid' && <div className="mt-3 text-sm font-medium text-emerald-600" data-testid="invoice-paid-provider">Paid by the client · 5% platform fee deducted from your payout</div>}
-      {isProvider && inv.lines.length > 0 && (
+      {isProvider && inv.lines.length > 0 && inv.payment_status !== 'paid' && (
         <Button onClick={send} disabled={sending} className="w-full mt-4" data-testid="send-invoice-btn">
           {sending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
           {inv.sent ? 'Resend updated invoice' : 'Send invoice to customer'}

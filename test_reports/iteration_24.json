@@ -1,0 +1,44 @@
+{
+  "summary": "Tested Stripe invoice payments (fee quote, checkout, status polling, webhook rejection, mark-paid side effects, payment history), the AI receipt scanner (real Gemini call) with receipts CRUD and invoice lines, and the project timeline (stages, updates, client notifications). Backend: 14/14 new iter24 tests pass, and 22/22 iter22 regression tests pass. Frontend: one CRITICAL bug, which I fixed. Receipt upload in the UI always failed with 'Could not read the receipt' because Receipts.jsx called uploadFile(file) without an onProgress callback, which threw a TypeError after the first chunk. After the fix the UI flow works: upload, AI fill (BUNNINGS / $65 / GST 8.48 / items / Materials), link to a job, save, the receipt appears as an ex-GST invoice line, resend invoice v2, client pays. A real Stripe sandbox payment (4242 card) redirected to /payment/success and showed 'Payment received'. The job became done+paid, the booking payout was 171 after the 5% fee, and the client saw the 'Paid' state. Apple Pay was offered on the Stripe page.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/payments/invoice/{job_id}/checkout", "issue": "Each click creates a new Stripe session and leaves earlier ones open (we saw 3 pending plus 1 paid for one job). A client could pay twice by returning to an older Stripe tab. _mark_paid processes each session on its own, so a second payment is accepted and never refunded. Reuse the open session, or expire earlier sessions before creating a new one."},
+      {"endpoint": "POST /api/payments/invoice/{job_id}/checkout + _mark_paid", "issue": "invoice_version is stored in metadata but never checked. If the provider resends an updated invoice after checkout starts, the client pays the old amount and the job is still marked paid."},
+      {"endpoint": "POST /api/receipts", "issue": "There is no check that 0 <= gst <= total. A gst larger than the total gives a negative ex-GST invoice line in _compute_invoice. Receipts can also still be attached to a job after it has been paid."},
+      {"endpoint": "GET /api/payments/status/{session_id}", "issue": "Needs no login, so anyone with a session_id can read its job_id and status. Low risk, but consider require_user plus an owner check."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Receipts.jsx / MediaUploader.uploadFile", "issue": "FIXED BY TESTER: uploadFile(file) was called without onProgress, so a TypeError stopped the upload before /complete and no receipt could ever be scanned or uploaded. Fix: default parameter onProgress = () => {} in MediaUploader.jsx.", "selector": "[data-testid='receipt-file-input']", "priority": "CRITICAL"},
+      {"component": "JobInvoice (provider, paid job)", "issue": "The 'Resend updated invoice' button still shows after payment, and the backend rejects it with 400 'already paid'. Hide it when payment_status === 'paid'.", "selector": "[data-testid='send-invoice-btn']", "priority": "LOW"},
+      {"component": "PaymentSuccess", "issue": "When the session_id is unknown or invalid, the API returns 404, but the page keeps polling for 30s ('Confirming your payment…') and then shows 'Still processing'. It should show 'Payment not completed' straight away on a 404.", "selector": "[data-testid='payment-status-title']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Receipts form", "issues": ["Date uses the browser's native <input type=date> and the job picker is a native <select>. Both are inconsistent with the shadcn components used elsewhere.", "GST, date, notes, cancel and the receipt-row delete/View buttons have no data-testid."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter24_payments_receipts_timeline.py", "/app/backend/tests/ui_setup_iter24.py", "/app/test_reports/pytest/iter24.xml"],
+  "action_items": [
+    "Prevent duplicate Stripe charges: reuse or expire earlier open checkout sessions per job, and guard _mark_paid against a second paid session.",
+    "Check invoice_version when marking paid, or block invoice resend while a checkout is open.",
+    "Validate receipt gst (0 <= gst <= total), and block receipts on paid jobs.",
+    "Hide 'Resend updated invoice' for paid invoices.",
+    "Show an error state straight away on PaymentSuccess when the status returns 404.",
+    "Optional: replace the native date input and select on the Receipts page with shadcn components, and add the missing testids."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 4,837 lines and should be split into route modules (payments, receipts, timeline, matching).",
+    "A webhook with a valid signature that belongs to a different, still-pending session would mark that job paid. This is correct, but there is no refund or alert path for duplicate payments.",
+    "Timeline photos are filtered by the '/api/files/' prefix but file ownership is not checked, unlike receipts' _own_file."
+  ],
+  "updated_files": ["/app/frontend/src/components/MediaUploader.jsx", "/app/backend/tests/test_iter24_payments_receipts_timeline.py", "/app/backend/tests/ui_setup_iter24.py"],
+  "success_rate": {"backend": "100% (14/14 new + 22/22 regression)", "frontend": "90% (1 critical bug fixed by tester; 2 low UI issues open)"},
+  "seed_data_creation": "Created TEST_pay_* jobs, receipts, files, timeline updates, invoices and payment_transactions through demo customer and provider accounts. All were cleaned up by id.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with `-p no:xdist -o addopts=''`. The iter24 test drives server._mark_paid directly because a headless card payment isn't possible through the API. A real UI payment works: on checkout.stripe.com, search page.frames for placeholders ('you@example.com', '1234 1234 1234 1234', 'MM / YY', 'CVC', 'Full name on card', 'ZIP') and click the button[type=submit] inside the js.stripe.com elements-inner frame. EMERGENT_LLM_KEY and STRIPE_API_KEY are set in the process environment, not in backend/.env. The receipt model gemini-3.8-flash works (about 3s). Use ui_setup_iter24.py setup/cleanup to create an assigned job for UI tests.",
+  "rca of the issue": "Receipt upload failure: Receipts.jsx line 48 calls uploadFile(file). uploadFile calls onProgress(...) after each chunk PUT, but onProgress was undefined, so it threw a TypeError. The catch block showed the generic toast and /uploads/{id}/complete was never called (backend logs show init and chunk but no complete). Fix: give onProgress a default no-op."
+}

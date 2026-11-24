@@ -19,7 +19,9 @@ export function PaymentSuccess() {
         if (r.data.payment_status === 'paid') { setState({ status: 'paid', jobId: r.data.job_id }); return; }
         if (r.data.status === 'expired') { setState({ status: 'expired', jobId: r.data.job_id }); return; }
         setState({ status: 'checking', jobId: r.data.job_id });
-      } catch { /* keep polling */ }
+      } catch (err) {
+        if (err?.response?.status === 404) { setState({ status: 'error' }); return; }
+      }
       tries.current += 1;
       if (tries.current < 15) timer = setTimeout(poll, 2000);
       else setState((s) => ({ ...s, status: 'timeout' }));
