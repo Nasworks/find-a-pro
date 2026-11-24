@@ -132,8 +132,8 @@ export default function JobDetail() {
                 <div><span className="text-muted-foreground">Category</span><div className="font-medium capitalize">{job.category}</div></div>
                 <div><span className="text-muted-foreground">Urgency</span><div className="font-medium capitalize">{job.urgency.replace('_', ' ')}</div></div>
                 <div><span className="text-muted-foreground">Location</span><div className="font-medium">{job.location}</div></div>
-                <div><span className="text-muted-foreground">Budget</span><div className="font-medium">{job.budget_min ? `$${job.budget_min} – $${job.budget_max}` : 'Open to quotes'}</div></div>
-                <div><span className="text-muted-foreground">Mode</span><div className="font-medium capitalize">{job.mode}</div></div>
+                <div><span className="text-muted-foreground">Budget</span><div className="font-medium">{priceLine(job)}</div></div>
+                <div><span className="text-muted-foreground">Job size</span><div className="font-medium">{(SIZE_META[job.pricing_type] || SIZE_META.large_quote).l}</div></div>
                 <div><span className="text-muted-foreground">Bids received</span><div className="font-medium">{activeBids.length}</div></div>
               </div>
             </div>

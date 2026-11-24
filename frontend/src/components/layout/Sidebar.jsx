@@ -129,7 +129,10 @@ const roles = [
 
 export default function Sidebar({ collapsed, setCollapsed, embedded = false, onNavigate }) {
   const { user } = useAuth();
-  const nav = roleNav[user?.role] || clientNav;
+  const baseNav = roleNav[user?.role] || clientNav;
+  const nav = user?.is_reviewer
+    ? [...baseNav, { section: 'Admin', items: [{ to: '/review/documents', label: 'Review Documents', icon: ShieldCheck }] }]
+    : baseNav;
 
   return (
     <aside className={`${embedded ? 'w-full h-full flex-1' : `${collapsed ? 'w-16' : 'w-64'} sticky top-0 h-screen`} shrink-0 border-r border-border bg-card flex flex-col transition-all duration-200`}>

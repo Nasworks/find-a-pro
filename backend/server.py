@@ -50,6 +50,9 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    account_type: Optional[str] = None           # residential | commercial
+    business_name: Optional[str] = None          # providers / companies
+    signup_details: Dict[str, Any] = {}          # role-specific answers from the signup flow
 
 
 class UserLogin(BaseModel):
@@ -447,6 +450,11 @@ async def require_user(user=Depends(get_current_user)):
 # ---------------- AUTH ROUTES ----------------
 @api.post("/auth/register")
 async def register(payload: UserCreate, response: Response):
+    payload.email = payload.email.strip().lower()
+    if payload.role not in SIGNUP_ROLES:
+        raise HTTPException(status_code=400, detail="Unknown account type")
+    if len(payload.password or "") < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
     existing = await db.users.find_one({"email": payload.email}, {"_id": 0})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -461,20 +469,23 @@ async def register(payload: UserCreate, response: Response):
         "city": payload.city,
         "password_hash": hash_password(payload.password),
         "created_at": datetime.now(timezone.utc),
+        **_signup_fields(payload.role, payload.account_type, payload.business_name, payload.signup_details),
     }
     await db.users.insert_one(doc)
     # If provider role, create provider profile
     if payload.role == "provider":
         await db.provider_profiles.insert_one({
             "user_id": user_id,
-            "business_name": payload.name,
+            "business_name": (payload.business_name or "").strip() or payload.name,
             "categories": [],
             "hourly_rate": 85.0,
-            "rating": 4.7,
+            "rating": 0.0,
             "reviews_count": 0,
             "jobs_completed": 0,
-            "verified": True,
-            "insured": True,
+            "verified": False,
+            "qualified_verified": False,
+            "police_checked": False,
+            "insured": False,
             "plan": "free",
             "online": False,
             "bio": "",
@@ -490,14 +501,15 @@ async def register(payload: UserCreate, response: Response):
 
 @api.post("/auth/login")
 async def login(payload: UserLogin, response: Response):
-    user = await db.users.find_one({"email": payload.email})
+    email = payload.email.strip()
+    user = await db.users.find_one({"email": email.lower()}) or await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_jwt(user["user_id"])
     set_auth_cookie(response, token)
     user.pop("_id", None)
     user.pop("password_hash", None)
-    return {"user": user, "token": token}
+    return {"user": {**user, "is_reviewer": is_reviewer(user)}, "token": token}
 
 
 # Demo accounts (idempotent, seeded on startup). One-click preview login by role.
@@ -620,9 +632,10 @@ async def google_session(request: Request, response: Response):
             "email": email,
             "name": name,
             "picture": picture,
-            "role": role,
+            "role": role if role in SIGNUP_ROLES else "customer",
             "phone": None,
             "city": "Auckland",
+            "signup_complete": False,   # role-specific details are sent next via /auth/complete-signup
             "created_at": datetime.now(timezone.utc),
         }
         await db.users.insert_one(user_doc)
@@ -633,11 +646,13 @@ async def google_session(request: Request, response: Response):
                 "business_name": name,
                 "categories": [],
                 "hourly_rate": 85.0,
-                "rating": 4.7,
+                "rating": 0.0,
                 "reviews_count": 0,
                 "jobs_completed": 0,
-                "verified": True,
-                "insured": True,
+                "verified": False,
+                "qualified_verified": False,
+                "police_checked": False,
+                "insured": False,
                 "plan": "free",
                 "online": False,
                 "bio": "",
@@ -662,14 +677,194 @@ async def google_session(request: Request, response: Response):
         path="/",
     )
     user.pop("password_hash", None)
-    return {"user": user, "session_token": session_token}
+    user.pop("password_hash", None)
+    return {"user": {**user, "is_reviewer": is_reviewer(user)}, "session_token": session_token}
 
 
 @api.get("/auth/me")
 async def me(user=Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
+    return {**user, "is_reviewer": is_reviewer(user)}
+
+
+SIGNUP_ROLES = ("customer", "provider", "property", "landlord", "facilities", "insurance")
+SIGNUP_DETAIL_KEYS = {
+    "customer": ["suburb", "home_type"],
+    "landlord": ["rental_count", "suburb"],
+    "property": ["company_name", "properties_managed", "suburb"],
+    "facilities": ["organisation", "buildings_count", "suburb"],
+    "insurance": ["company_name", "fsp_number", "claims_per_month"],
+    "provider": ["nzbn", "trade_licence", "years_in_business", "suburb"],
+}
+
+
+def is_reviewer(user: Optional[Dict[str, Any]]) -> bool:
+    emails = {e.strip().lower() for e in (os.environ.get("REVIEWER_EMAILS") or "").split(",") if e.strip()}
+    return bool(user and (user.get("email") or "").lower() in emails)
+
+
+def _signup_fields(role: str, account_type: Optional[str], business_name: Optional[str], details: Dict[str, Any]) -> Dict[str, Any]:
+    allowed = SIGNUP_DETAIL_KEYS.get(role, [])
+    clean = {k: (str(v).strip()[:200] if v is not None else None) for k, v in (details or {}).items() if k in allowed}
+    at = account_type if account_type in ("residential", "commercial") else ("commercial" if role in ("facilities",) else "residential")
+    out = {"account_type": at, "signup_details": clean, "signup_complete": True}
+    if business_name and business_name.strip():
+        out["business_name"] = business_name.strip()[:120]
+    return out
+
+
+class SignupCompleteIn(BaseModel):
+    role: str
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    account_type: Optional[str] = None
+    business_name: Optional[str] = None
+    signup_details: Dict[str, Any] = {}
+
+
+@api.post("/auth/complete-signup")
+async def complete_signup(payload: SignupCompleteIn, user=Depends(require_user)):
+    """Used after Google sign-up: stores the role-specific details collected before the redirect."""
+    if payload.role not in SIGNUP_ROLES:
+        raise HTTPException(status_code=400, detail="Unknown account type")
+    if user.get("signup_complete") and user.get("role") != payload.role:
+        raise HTTPException(status_code=400, detail="This account already has a different account type")
+    upd = _signup_fields(payload.role, payload.account_type, payload.business_name, payload.signup_details)
+    upd["role"] = payload.role
+    for k in ("name", "phone", "city"):
+        v = getattr(payload, k)
+        if v and v.strip():
+            upd[k] = v.strip()[:120]
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": upd})
+    if payload.role == "provider":
+        await db.provider_profiles.update_one({"user_id": user["user_id"]}, {
+            "$set": {"business_name": upd.get("business_name") or upd.get("name") or user.get("name")},
+            "$setOnInsert": {"categories": [], "hourly_rate": 85.0, "rating": 0.0, "reviews_count": 0, "jobs_completed": 0,
+                             "verified": False, "qualified_verified": False, "police_checked": False, "insured": False,
+                             "plan": "free", "online": False, "bio": ""}}, upsert=True)
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
+    return {**u, "is_reviewer": is_reviewer(u)}
+
+
+# ---------------- PROVIDER DOCUMENTS (qualifications, certifications, police check) ----------------
+DOC_KINDS = ("qualification", "certification", "police_check")
+
+
+class ProviderDocIn(BaseModel):
+    kind: str
+    title: str
+    issuer: Optional[str] = None
+    reference: Optional[str] = None
+    expiry: Optional[str] = None
+    file_url: str
+    file_name: Optional[str] = None
+
+
+async def _refresh_provider_ticks(provider_id: str):
+    approved = await db.provider_documents.find({"provider_id": provider_id, "status": "approved"}, {"kind": 1, "_id": 0}).to_list(None)
+    kinds = {d["kind"] for d in approved}
+    qualified = bool(kinds & {"qualification", "certification"})
+    police = "police_check" in kinds
+    await db.provider_profiles.update_one({"user_id": provider_id}, {"$set": {
+        "qualified_verified": qualified, "police_checked": police, "verified": qualified or police}})
+
+
+@api.get("/providers/me/documents")
+async def my_documents(user=Depends(require_user)):
+    await _require_provider(user)
+    return await db.provider_documents.find({"provider_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+
+@api.post("/providers/me/documents")
+async def add_document(payload: ProviderDocIn, user=Depends(require_user)):
+    await _require_provider(user)
+    if payload.kind not in DOC_KINDS:
+        raise HTTPException(status_code=400, detail="kind must be qualification, certification or police_check")
+    if not payload.title.strip():
+        raise HTTPException(status_code=400, detail="Please give the document a name")
+    if not payload.file_url.startswith("/api/files/"):
+        raise HTTPException(status_code=400, detail="Upload the document file first")
+    fid = payload.file_url.split("/")[3]
+    rec = await db.files.find_one({"file_id": fid}, {"_id": 0, "owner_id": 1})
+    if not rec or rec.get("owner_id") != user["user_id"]:
+        raise HTTPException(status_code=400, detail="File not found")
+    doc = {"doc_id": f"doc_{uuid.uuid4().hex[:10]}", "provider_id": user["user_id"], "kind": payload.kind,
+           "title": payload.title.strip()[:120], "issuer": (payload.issuer or "").strip()[:120] or None,
+           "reference": (payload.reference or "").strip()[:80] or None, "expiry": payload.expiry or None,
+           "file_url": payload.file_url, "file_name": (payload.file_name or "")[:200] or None,
+           "status": "pending", "review_note": None, "created_at": datetime.now(timezone.utc),
+           "reviewed_at": None, "reviewed_by": None}
+    await db.provider_documents.insert_one(dict(doc))
+    for email in [e.strip().lower() for e in (os.environ.get("REVIEWER_EMAILS") or "").split(",") if e.strip()]:
+        rv = await db.users.find_one({"email": email}, {"user_id": 1, "_id": 0})
+        if rv:
+            await notify(rv["user_id"], "doc_review", "New document to review", f"{doc['title']} · {user.get('name')}", "/review/documents")
+    return doc
+
+
+@api.delete("/providers/me/documents/{doc_id}")
+async def delete_document(doc_id: str, user=Depends(require_user)):
+    await _require_provider(user)
+    r = await db.provider_documents.delete_one({"doc_id": doc_id, "provider_id": user["user_id"]})
+    if not r.deleted_count:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await _refresh_provider_ticks(user["user_id"])
+    return {"ok": True}
+
+
+@api.get("/providers/{provider_id}/credentials")
+async def provider_credentials(provider_id: str, user=Depends(require_user)):
+    prof = await db.provider_profiles.find_one({"user_id": provider_id}, {"_id": 0, "qualified_verified": 1, "police_checked": 1})
+    if prof is None:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    approved = await db.provider_documents.find({"provider_id": provider_id, "status": "approved"},
+                                                {"_id": 0, "kind": 1, "title": 1, "issuer": 1, "expiry": 1}).to_list(50)
+    return {"qualified": bool(prof.get("qualified_verified")), "police_checked": bool(prof.get("police_checked")), "documents": approved}
+
+
+async def _require_reviewer(user):
+    if not is_reviewer(user):
+        raise HTTPException(status_code=403, detail="Only document reviewers can do this")
+
+
+@api.get("/review/documents")
+async def review_queue(status: str = "pending", user=Depends(require_user)):
+    await _require_reviewer(user)
+    q = {} if status == "all" else {"status": status}
+    docs = await db.provider_documents.find(q, {"_id": 0}).sort("created_at", 1).to_list(500)
+    profs = await db.provider_profiles.find({"user_id": {"$in": list({d["provider_id"] for d in docs})}},
+                                            {"_id": 0, "user_id": 1, "business_name": 1}).to_list(None)
+    pm = {p["user_id"]: p.get("business_name") for p in profs}
+    for d in docs:
+        d["provider_name"] = pm.get(d["provider_id"], "")
+    return docs
+
+
+class ReviewIn(BaseModel):
+    decision: str  # approve | reject
+    note: Optional[str] = None
+
+
+@api.post("/review/documents/{doc_id}")
+async def review_document(doc_id: str, payload: ReviewIn, user=Depends(require_user)):
+    await _require_reviewer(user)
+    if payload.decision not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="decision must be approve or reject")
+    d = await db.provider_documents.find_one({"doc_id": doc_id}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if payload.decision == "reject" and not (payload.note or "").strip():
+        raise HTTPException(status_code=400, detail="Add a short reason so the provider can fix it")
+    status = "approved" if payload.decision == "approve" else "rejected"
+    await db.provider_documents.update_one({"doc_id": doc_id}, {"$set": {
+        "status": status, "review_note": (payload.note or "").strip()[:500] or None,
+        "reviewed_at": datetime.now(timezone.utc), "reviewed_by": user["email"]}})
+    await _refresh_provider_ticks(d["provider_id"])
+    await notify(d["provider_id"], "doc_reviewed", f"{d['title']} {'approved ✓' if status == 'approved' else 'needs attention'}",
+                 payload.note or "", "/provider/verification")
+    return {"ok": True, "status": status}
 
 
 @api.post("/auth/logout")
@@ -855,6 +1050,8 @@ async def delete_job(job_id: str, user=Depends(require_user)):
         raise HTTPException(status_code=403, detail="Not allowed")
     await db.jobs.delete_one({"job_id": job_id})
     await db.bids.delete_many({"job_id": job_id})
+    await db.job_matches.delete_many({"job_id": job_id})
+    await db.notifications.delete_many({"link": f"/jobs/{job_id}"})
     return {"ok": True}
 
 
@@ -990,6 +1187,8 @@ async def accept_bid(bid_id: str, user=Depends(require_user)):
     job = await db.jobs.find_one({"job_id": bid["job_id"]}, {"_id": 0})
     if not job or job["client_id"] != user["user_id"]:
         raise HTTPException(status_code=403, detail="Not allowed")
+    if job.get("status") not in ("open", "matched"):
+        raise HTTPException(status_code=400, detail="This job has already been awarded")
     await db.bids.update_one({"bid_id": bid_id}, {"$set": {"status": "accepted"}})
     await db.jobs.update_one({"job_id": bid["job_id"]}, {"$set": {"status": "in_progress", "assigned_provider_id": bid["provider_id"]}})
     # Close the dispatch queue for everyone else
@@ -1349,6 +1548,25 @@ async def _google_search(q: str, session: Optional[str]) -> List[Dict[str, Any]]
     return out[:6]
 
 
+async def _nominatim_search(q: str) -> List[Dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=6.0) as client:
+        r = await client.get("https://nominatim.openstreetmap.org/search", headers=OSM_UA,
+                             params={"q": q, "format": "jsonv2", "countrycodes": "nz", "addressdetails": 1, "limit": 6})
+        r.raise_for_status()
+        rows = r.json()
+    out = []
+    for row in rows:
+        a = row.get("address", {})
+        street = " ".join(x for x in [a.get("house_number"), a.get("road")] if x)
+        main = street or row.get("name") or row.get("display_name", "").split(",")[0]
+        area = [a.get("suburb") or a.get("neighbourhood"), a.get("city") or a.get("town") or a.get("village"), a.get("postcode")]
+        secondary = ", ".join(dict.fromkeys(x for x in area if x and x != main))
+        out.append({"id": f"nom:{row.get('osm_type')}{row.get('osm_id')}", "main": main, "secondary": secondary,
+                    "address": ", ".join(x for x in [main, secondary] if x),
+                    "lat": float(row["lat"]) if row.get("lat") else None, "lng": float(row["lon"]) if row.get("lon") else None})
+    return out
+
+
 @api.get("/address/search")
 async def address_search(q: str, session: Optional[str] = None, user=Depends(require_user)):
     q = (q or "").strip()
@@ -1364,7 +1582,11 @@ async def address_search(q: str, session: Optional[str] = None, user=Depends(req
     try:
         return {"source": "osm", "results": await _photon_search(q)}
     except Exception as e:
-        logging.warning(f"OSM address search failed: {e}")
+        logging.warning(f"Photon address search failed, trying Nominatim: {e}")
+    try:
+        return {"source": "osm", "results": await _nominatim_search(q)}
+    except Exception as e:
+        logging.warning(f"Nominatim address search failed: {e}")
         return {"source": "error", "results": []}
 
 
@@ -2281,8 +2503,8 @@ class UploadInit(BaseModel):
 @api.post("/uploads/init")
 async def upload_init(payload: UploadInit, user=Depends(require_user)):
     ct = (payload.content_type or "").lower()
-    if not (ct.startswith("image/") or ct.startswith("video/")):
-        raise HTTPException(status_code=400, detail="Only photos and videos can be uploaded")
+    if not (ct.startswith("image/") or ct.startswith("video/") or ct == "application/pdf"):
+        raise HTTPException(status_code=400, detail="Only photos, videos and PDF documents can be uploaded")
     limit = MAX_VIDEO_BYTES if ct.startswith("video/") else MAX_IMAGE_BYTES
     if payload.size <= 0 or payload.size > limit:
         raise HTTPException(status_code=400, detail=f"File too large (max {limit // (1024 * 1024)} MB)")
@@ -4101,7 +4323,7 @@ async def job_matches(job_id: str, user=Depends(require_user)):
     matches = await db.job_matches.find({"job_id": job_id}, {"_id": 0}).sort("created_at", 1).to_list(None)
     profs = await db.provider_profiles.find({"user_id": {"$in": [m["provider_id"] for m in matches]}},
                                             {"_id": 0, "user_id": 1, "business_name": 1, "rating": 1, "reviews_count": 1,
-                                             "verified": 1, "business_size": 1, "availability_status": 1, "hourly_rate": 1}).to_list(None)
+                                             "verified": 1, "qualified_verified": 1, "police_checked": 1, "business_size": 1, "availability_status": 1, "hourly_rate": 1}).to_list(None)
     pm = {p["user_id"]: p for p in profs}
     for m in matches:
         m["provider"] = pm.get(m["provider_id"], {})
@@ -4145,7 +4367,8 @@ async def award_job(job_id: str, payload: AwardIn, user=Depends(require_user)):
             sched = datetime.strptime(job["preferred_date"][:10], "%Y-%m-%d").replace(hour=9, tzinfo=timezone.utc)
         except ValueError:
             pass
-    booking = Booking(client_id=job["client_id"], client_name=user["name"], provider_id=m["provider_id"],
+    client_user = await db.users.find_one({"user_id": job["client_id"]}, {"_id": 0, "name": 1}) or {}
+    booking = Booking(client_id=job["client_id"], client_name=client_user.get("name") or user["name"], provider_id=m["provider_id"],
                       provider_name=bid["provider_name"], job_id=job_id, category=job["category"], price=amount,
                       scheduled_at=sched, address=job.get("location", "Auckland"))
     await db.bookings.insert_one(booking.dict())
@@ -4171,6 +4394,9 @@ async def job_progress(job_id: str, payload: JobProgressIn, user=Depends(require
     if payload.status not in allowed.get(job["status"], []):
         raise HTTPException(status_code=400, detail=f"Can't move a {job['status']} job to {payload.status}")
     await db.jobs.update_one({"job_id": job_id}, {"$set": {"status": payload.status}})
+    # keep the booking in sync so provider stats / earnings reflect match jobs
+    await db.bookings.update_many({"job_id": job_id, "provider_id": job.get("assigned_provider_id"), "status": {"$nin": ["paid", "cancelled"]}},
+                                  {"$set": {"status": "done" if payload.status == "done" else "working"}})
     other = job["client_id"] if user["user_id"] == job.get("assigned_provider_id") else job.get("assigned_provider_id")
     if other:
         await notify(other, "job_status", "Job started" if payload.status == "in_progress" else "Job completed",

@@ -1,0 +1,49 @@
+{
+  "summary": "Iter22: tested the restored commercial track, job sizes (pricing_type) in the Book flow and on classic /post-job, the strict matching engine, the dispatch queue (accept, quote, decline), award, progress, notifications and the provider onboarding wizard. Backend: 39/39 new and updated tests pass. Older residential-only assertions were changed to expect commercial again, as requested. UI checked end to end: Book flow -> 3 job-size cards -> full-screen details panel -> toast '2 specialised pros notified' -> JobDetail matches panel -> provider Accept & Claim -> client Award -> 'Assigned' -> provider Start/Mark complete -> client sees 'Completed'. Also checked: large_quote Submit Quote -> award at $2500, Decline, the notification bell (desktop and mobile), and the fresh-provider onboarding redirect, validation, search, select-all and Finish. One real UX bug: on /post-job, picking a saved property whose type differs from the chosen track silently switches the track and clears the chosen service. In the test this posted a residential carpentry/doors job with 0 matches when the user meant Commercial Handyman.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/jobs/{id}/progress", "issue": "Updates only jobs.status. The booking created by award_job stays 'confirmed', so the provider dashboard stats (Completed=0, Earnings $0, Active Jobs keeps rising) never reflect completed match jobs. Sync the booking status to done/in_progress."},
+      {"endpoint": "DELETE /api/jobs/{id}", "issue": "Does not cascade-delete job_matches or notifications. Found 7 orphan job_matches from deleted iter19 test jobs; cleaned them up."},
+      {"endpoint": "POST /api/bids/{id}/accept", "issue": "Does not check the job status. A client can accept a classic bid on a job already awarded through matches, which reassigns it and creates a second booking. It also sets status to in_progress (skipping assigned) and does not close other bids."},
+      {"endpoint": "POST /api/jobs/{id}/award", "issue": "Sets booking client_name=user['name']. If the approver awards, this is the approver's name, not the client's."},
+      {"endpoint": "_area_ok", "issue": "Suburb matching is a plain substring test on the location string (e.g. 'Eden' would match 'Mount Eden Rd', and 'Newton' would match 'Newtonville'). This is acceptable for an MVP, but match on tokens or location_suburb for accuracy."},
+      {"endpoint": "GET /api/address/search", "issue": "Returns source:'error' with empty results because Photon is unreachable from the container. This is the known issue and was not counted as a failure."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "JobRequestForm pickProperty (classic /post-job and Book details)", "issue": "Picking a saved property whose property_type differs from the selected track calls changeServiceType(), which wipes the picked service (EMPTY_SERVICE). Title auto-detect then re-picks a different service. Seen in test: chose Commercial + Commercial Handyman, picked 'Office' (residential) -> job posted as residential carpentry-joinery/doors with 0 matches. Only a passing info toast is shown. Ask for confirmation instead, or keep the track and service and don't override.", "selector": "[data-testid^='job-location-property-']", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Provider feed after Mark complete", "issue": "The completed job disappears from 'Active assigned jobs' (the filter only includes assigned/in_progress). The brief expected a 'completed' badge in the provider feed. Only the client JobDetail shows 'Completed'. Consider a 'Recently completed' section.", "affected_selectors": ["[data-testid^='match-active-']"]}
+    ],
+    "design_issues": [
+      {"screen": "Book details / post-job", "issues": ["Preferred date uses the browser's native <input type=date> instead of the shadcn Calendar/Popover", "Large quote budget min/max inputs have no data-testid", "Description is required by native HTML validation (browser tooltip), not the app's toast style"]},
+      {"screen": "JobDetail (client)", "issues": ["The Job details card shows 'Budget: Open to quotes' and 'Mode: Bids' even for small_fixed jobs with a Target $180. It should show the target price or hours estimate.", "Category shows the slug-style 'Plumbing-Gas' and no subcategory name", "The awarded match card shows both an 'Awarded' badge and an 'Accepted' status pill"]},
+      {"screen": "Provider onboarding -> dashboard", "issues": ["After Finish, the dashboard opens scrolled down because scroll position carries over from the long pricing step (no scroll-to-top)", "Pricing Intelligence still shows the generic $85/hr instead of the per-spec rates"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter22_matching_engine.py", "/app/backend/tests/test_iter21_residential_only.py", "/app/test_reports/pytest/iter22.xml"],
+  "action_items": [
+    "Fix pickProperty in JobRequestForm: don't silently switch service_type and clear the chosen service when a saved property's type differs. Confirm with the user, or keep the user's track. Also consider fixing the demo 'Office' property type.",
+    "Sync the booking status in POST /jobs/{id}/progress so provider Completed/Earnings stats update",
+    "Guard POST /bids/{id}/accept against jobs not in open/matched status",
+    "Cascade-delete job_matches and notifications in DELETE /jobs/{id}",
+    "Show the completed state for match jobs in the provider feed (or a recent-completed list)",
+    "JobDetail: show the target price or hours for small_fixed/hourly jobs instead of 'Open to quotes'"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 4278 lines; split the matching engine, onboarding and notifications into modules",
+    "dispatch_job runs sequential awaits per provider (insert + notify), and save_onboarding re-dispatches up to 500 open jobs inline in the request. Fine for now, but move to a background task or bulk insert as the data grows.",
+    "_respond lets a provider re-accept or re-quote after already responding (accepted -> quote_submitted on a small job via /quote). The quote endpoint does not reject non-large_quote jobs, which is asymmetric with accept rejecting large_quote."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter22_matching_engine.py", "/app/backend/tests/test_iter21_residential_only.py", "/app/backend/tests/test_services_taxonomy.py", "/app/backend/tests/test_iter18_services_detect_uploads.py"],
+  "success_rate": {"backend": "100% (39/39 new and updated; old residential-only assertions updated; address search excluded as a known Photon issue)", "frontend": "~90% (all flows work; 1 HIGH UX bug on property-type auto-switch)"},
+  "test_credentials": "/app/memory/test_credentials.md does NOT exist. Used POST /api/auth/demo-login {role}. Fresh providers were made via POST /api/auth/register (role=provider).",
+  "seed_data_creation": "None kept. Removed all TEST jobs, matches, bids, bookings and notifications plus 2 TEST_UIPro users. Also removed 7 orphan job_matches and the TEST_iter19 notifications. The pre-existing 'TEST_ Iter14' job and the 'TEST match tap' notification on the demo provider were not created by me and were left in place.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: export REACT_APP_BACKEND_URL=...; pytest -n0 tests/test_iter22_matching_engine.py (it cleans up by id via Mongo). UI login trick: page.request.post('/api/auth/demo-login') then reload (the cookie is shared). Demo customer properties: Home prop_06f6505a8f (Ponsonby Rd -> matches Sarah), Office prop_94575790c6 (Wellington, type residential). Each browser_automation call is a new context. test_services_taxonomy/test_iter19 leave jobs and orphan matches; delete them by id afterwards.",
+  "rca of the issue": "Property auto-switch bug: JobRequestForm.pickProperty() calls changeServiceType(p.property_type) whenever the property type differs from form.service_type. changeServiceType() resets the service to EMPTY_SERVICE (unless a search-bar preset variant exists), and title auto-detect then fills in a different residential service. Repro: /post-job -> Commercial -> Hourly -> pick Commercial Handyman -> title 'TEST commercial handyman', description 'Fix doors in office' -> click the Office property -> enter hours -> Post. Result: service_type=residential, category=carpentry-joinery/doors, matched_count=0."
+}

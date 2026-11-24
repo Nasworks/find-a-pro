@@ -12,6 +12,9 @@ import { Label } from './ui/label';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from './ui/sheet';
 import { Badge } from './ui/badge';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from './ui/alert-dialog';
 import ServicePicker from './ServicePicker';
 import { useServiceDetect, DetectedAlternatives, providersLink } from './ServiceDetect';
 import { MediaUploader } from './MediaUploader';
@@ -158,10 +161,10 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
   };
 
   const pickProperty = (p) => {
+    // Only set the location — never silently switch the track or clear the chosen service
     setLoc({ property_id: p.property_id, address: p.address, lat: p.lat, lng: p.lng, save: false, save_name: '' });
     if (p.property_type && form.service_type && p.property_type !== form.service_type) {
-      changeServiceType(p.property_type);
-      toast.info(`Property type switched to ${p.property_type === 'commercial' ? 'Commercial' : 'Residential'} for ${p.name || 'this property'}`);
+      toast.info(`${p.name || 'This property'} is saved as ${p.property_type} — your job stays ${form.service_type === 'commercial' ? 'Commercial' : 'Residential'}`);
     }
   };
 
@@ -183,8 +186,18 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
     }
   };
 
-  const submit = async (e) => {
-    e.preventDefault();
+  const [hourlyNoticeOpen, setHourlyNoticeOpen] = useState(false);
+  const [hourlyAck, setHourlyAck] = useState(false);
+
+  const submit = async (e, acknowledged = false) => {
+    e?.preventDefault?.();
+    // Hourly jobs: client must acknowledge the materials / equipment-hire terms before posting
+    if (form.pricing_type === 'hourly' && !hourlyAck && !acknowledged) {
+      if (form.title && form.category && Number(form.budget_or_estimate) > 0 && loc.address.trim()) {
+        setHourlyNoticeOpen(true);
+        return;
+      }
+    }
     if (!form.title || !form.category) {
       toast.error('Please pick a service and enter a title');
       return;
@@ -443,6 +456,26 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
     </div>
   );
 
+  const hourlyNotice = (
+    <AlertDialog open={hourlyNoticeOpen} onOpenChange={setHourlyNoticeOpen}>
+      <AlertDialogContent data-testid="hourly-disclaimer">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Before you post an hourly job</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>The hourly rate covers the pro's <strong className="text-foreground">labour only</strong>. You will need to pay separately for any <strong className="text-foreground">materials</strong> and <strong className="text-foreground">equipment hire</strong> that aren't included in the hourly rate.</p>
+              <p>Your pro must send you a <strong className="text-foreground">quote or receipt through Pro Finder messages</strong> and get your OK <strong className="text-foreground">before</strong> buying materials or hiring equipment. You don't have to pay for anything you didn't approve.</p>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid="hourly-disclaimer-cancel">Go back</AlertDialogCancel>
+          <AlertDialogAction data-testid="hourly-disclaimer-accept" onClick={() => { setHourlyAck(true); submit(null, true); }}>I understand — post job</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
   const picker = (
     <ServicePicker
       open={pickerOpen}
@@ -528,6 +561,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
           </SheetContent>
         </Sheet>
         {picker}
+        {hourlyNotice}
       </div>
     );
   }
@@ -583,6 +617,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
         </div>
       </form>
       {picker}
+      {hourlyNotice}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { Users, Star, ShieldCheck, Trophy, Loader2, Hourglass, CalendarDays, Mes
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import api from '../lib/api';
+import { BadgeCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SIZE_LABEL = { solo: 'Solo operator', small_team: 'Small team', medium_enterprise: 'Medium business' };
@@ -61,7 +62,8 @@ export default function JobMatchesPanel({ job, onAwarded }) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-foreground">{p.business_name || m.provider_name}</span>
-                    {p.verified && <ShieldCheck className="w-3.5 h-3.5 text-primary" aria-label="Verified" />}
+                    {p.qualified_verified && <span className="inline-flex items-center gap-0.5 text-[11px] text-emerald-600"><BadgeCheck className="w-3.5 h-3.5" /> Qualified</span>}
+                    {p.police_checked && <span className="inline-flex items-center gap-0.5 text-[11px] text-emerald-600"><ShieldCheck className="w-3.5 h-3.5" /> Police checked</span>}
                     {won && <Badge className="bg-emerald-600 text-white border-0 gap-1"><Trophy className="w-3 h-3" /> Awarded</Badge>}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
@@ -74,9 +76,9 @@ export default function JobMatchesPanel({ job, onAwarded }) {
                 <div className="text-right shrink-0">
                   {m.match_status === 'quote_submitted' || m.quote_amount ? (
                     <div className="text-lg font-bold text-foreground" data-testid={`job-match-amount-${m.match_id}`}>${m.quote_amount}</div>
-                  ) : (
+                  ) : !won ? (
                     <Badge variant="outline">Accepted</Badge>
-                  )}
+                  ) : null}
                 </div>
               </div>
               {m.message && <div className="text-sm text-muted-foreground mt-2 flex gap-1.5"><MessageSquare className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {m.message}</div>}

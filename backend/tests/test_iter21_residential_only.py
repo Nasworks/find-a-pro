@@ -54,6 +54,9 @@ def created():
     db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
     for j in d["jobs"]:
         db.bids.delete_many({"job_id": j})
+        for m in db.job_matches.find({"job_id": j}):
+            db.notifications.delete_many({"user_id": m["provider_id"], "title": "New matched job", "body": {"$regex": "^TEST_"}})
+        db.job_matches.delete_many({"job_id": j})
         db.jobs.delete_one({"job_id": j})
     for p in d["props"]:
         db.properties.delete_one({"property_id": p})
@@ -83,15 +86,11 @@ class TestTaxonomy:
         ids = [c["id"] for c in d["categories"]]
         assert len(ids) == len(set(ids))
 
-    def test_no_commercial_words(self):
-        d = requests.get(f"{API}/services/taxonomy/residential").json()
-        txt = str(d).lower()
-        assert "commercial" not in txt
-
-    @pytest.mark.parametrize("path", ["services/taxonomy/commercial", "services/commercial-taxonomy",
-                                      "services/commercial-taxonomy/electrical"])
-    def test_commercial_endpoints_404(self, path):
-        assert requests.get(f"{API}/{path}").status_code == 404
+    # Iter22: commercial track restored (user choice) - commercial endpoint must work again
+    def test_commercial_taxonomy_back(self):
+        r = requests.get(f"{API}/services/taxonomy/commercial")
+        assert r.status_code == 200
+        assert r.json()["total_categories"] == 18
 
 
 # --- Detect ---
@@ -119,10 +118,12 @@ def test_detect(text, sub):
 
 # --- Jobs / properties validation ---
 class TestJobsProps:
-    def test_commercial_job_rejected(self, customer):
-        r = customer.post(f"{API}/jobs", json={"title": "TEST_c", "description": "x", "category": "cleaning",
-                                               "service_type": "commercial", "location": "Auckland"})
-        assert r.status_code == 400
+    def test_commercial_job_allowed(self, customer, created):
+        r = customer.post(f"{API}/jobs", json={"title": "TEST_c", "description": "x", "category": "building-maintenance",
+                                               "subcategory": "commercial-handyman", "pricing_type": "hourly",
+                                               "budget_or_estimate": 2, "service_type": "commercial", "location": "Auckland"})
+        assert r.status_code == 200, r.text
+        created["jobs"].append(r.json()["job_id"])
 
     def test_residential_new_sub_job(self, customer, created):
         r = customer.post(f"{API}/jobs", json={"title": "TEST_pest", "description": "rats", "category": "cleaning",
@@ -140,22 +141,16 @@ class TestJobsProps:
         assert r.status_code == 200, r.text
         created["jobs"].append(r.json()["job_id"])
 
-    def test_commercial_property_rejected(self, customer, created):
+    def test_commercial_property_allowed(self, customer, created):
         r = customer.post(f"{API}/properties", json={"address": "TEST_1 Queen St", "property_type": "commercial"})
-        assert r.status_code == 400
-        r = customer.post(f"{API}/properties", json={"address": "TEST_1 Queen St", "property_type": "mixed"})
-        assert r.status_code == 400
+        assert r.status_code == 200, r.text
+        created["props"].append(r.json()["property_id"])
         r = customer.post(f"{API}/properties", json={"address": "TEST_2 Queen St"})
         assert r.status_code == 200
         pid = r.json()["property_id"]
         created["props"].append(pid)
         assert r.json()["property_type"] == "residential"
-        assert customer.patch(f"{API}/properties/{pid}", json={"property_type": "commercial"}).status_code == 400
+        assert customer.patch(f"{API}/properties/{pid}", json={"property_type": "commercial"}).status_code == 200
         assert customer.patch(f"{API}/properties/{pid}", json={"name": "TEST_ok"}).status_code == 200
 
 
-# --- DB state ---
-def test_db_no_commercial_data():
-    db = MongoClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
-    assert db.jobs.count_documents({"service_type": {"$exists": True, "$ne": "residential"}}) == 0
-    assert db.properties.count_documents({"property_type": {"$in": ["commercial", "mixed"]}}) == 0

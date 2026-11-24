@@ -23,6 +23,7 @@ import JobDetail from './pages/client/JobDetail';
 
 import ProviderDashboard from './pages/provider/ProviderDashboard';
 import ProviderOnboarding from './pages/provider/ProviderOnboarding';
+import ReviewDocuments from './pages/shared/ReviewDocuments';
 import ProviderJobBoard from './pages/provider/ProviderJobBoard';
 import ProviderEarnings from './pages/provider/ProviderEarnings';
 import ProviderCalendar from './pages/provider/ProviderCalendar';
@@ -56,6 +57,7 @@ function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
   if (!user) return <Navigate to="/" replace />;
+  if (user.signup_complete === false && !window.location.hash.includes('session_id=')) return <Navigate to="/signup" replace />;
   return children;
 }
 
@@ -97,6 +99,7 @@ function AppRouter() {
         {/* Provider */}
         <Route path="/provider/dashboard" element={<ProviderDashboard />} />
         <Route path="/provider/onboarding" element={<ProviderOnboarding />} />
+        <Route path="/review/documents" element={<ReviewDocuments />} />
         <Route path="/provider/job-board" element={<ProviderJobBoard />} />
         <Route path="/provider/earnings" element={<ProviderEarnings />} />
         <Route path="/provider/calendar" element={<ProviderCalendar />} />

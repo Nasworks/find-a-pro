@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import MatchedJobsFeed from '../../components/MatchedJobsFeed';
 import SpecializationBadges from '../../components/SpecializationBadges';
+import CredentialTicks from '../../components/CredentialTicks';
 import { Settings2 } from 'lucide-react';
 
 export default function ProviderDashboard() {
@@ -59,6 +60,7 @@ export default function ProviderDashboard() {
             <div>
               <div className="text-xs text-muted-foreground">Provider Portal</div>
               <div className="text-2xl font-bold text-foreground">Welcome back, {user?.name?.split(' ')[0]}</div>
+              {user?.user_id && <CredentialTicks providerId={user.user_id} showPending className="mt-1.5" />}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -71,7 +73,7 @@ export default function ProviderDashboard() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-6">
-          <QuickAction icon={ShieldCheck} title="Verify" desc="Qualifications" color="bg-teal-500" />
+          <QuickAction icon={ShieldCheck} title="Verify" desc="Qualifications & police check" color="bg-teal-500" to="/provider/verification" />
           <QuickAction icon={Users} title="Team" desc="Manage workers" color="bg-violet-500" />
           <QuickAction icon={Clock} title="Timesheet" desc="Track your time" color="bg-amber-500" to="/provider/timesheet" />
         </div>

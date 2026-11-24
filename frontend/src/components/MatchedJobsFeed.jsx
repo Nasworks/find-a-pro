@@ -83,6 +83,7 @@ export default function MatchedJobsFeed() {
   const fresh = matches.filter((m) => m.match_status === 'notified' && isOpenJob(m));
   const waiting = matches.filter((m) => ['accepted', 'quote_submitted'].includes(m.match_status) && isOpenJob(m));
   const active = matches.filter((m) => m.match_status === 'awarded' && ['assigned', 'in_progress'].includes(m.job.status));
+  const completed = matches.filter((m) => m.match_status === 'awarded' && m.job.status === 'done').slice(0, 5);
 
   return (
     <div className="space-y-6" data-testid="matched-jobs-feed">
@@ -157,6 +158,20 @@ export default function MatchedJobsFeed() {
           {active.length === 0 && <div className="text-sm text-muted-foreground text-center py-6">No active assigned jobs</div>}
         </div>
       </section>
+
+      {completed.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3"><CheckCircle2 className="w-4 h-4 text-muted-foreground" /><h2 className="font-semibold text-foreground">Recently completed</h2></div>
+          <div className="space-y-2">
+            {completed.map((m) => (
+              <Link to={`/jobs/${m.job_id}`} key={m.match_id} className="flex items-center justify-between gap-3 bg-card border border-border rounded-xl p-4 hover:border-primary/40" data-testid={`match-completed-${m.match_id}`}>
+                <span className="font-medium text-foreground truncate">{m.job.title}</span>
+                <Badge variant="outline" className="shrink-0">Completed</Badge>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <Dialog open={!!dialog} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent className="max-w-md" data-testid="match-respond-dialog">

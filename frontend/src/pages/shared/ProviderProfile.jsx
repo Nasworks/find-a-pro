@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Star, MapPin, Shield, ShieldCheck, Award, Clock, Briefcase, MessageSquare, Loader2, CheckCircle2, Sparkles, Heart } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import CredentialTicks from '../../components/CredentialTicks';
+import SpecializationBadges from '../../components/SpecializationBadges';
 import { Badge } from '../../components/ui/badge';
 import api from '../../lib/api';
 import { toast } from 'sonner';
@@ -76,6 +78,8 @@ export default function ProviderProfile() {
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl md:text-3xl font-bold text-foreground" data-testid="provider-name">{p.business_name}</h1>
+          <CredentialTicks providerId={providerId} className="mt-2" />
+          <div className="mt-2"><SpecializationBadges providerId={providerId} compact /></div>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
             <span className="inline-flex items-center gap-1 font-bold text-amber-500"><Star className="w-4 h-4 fill-amber-500" /> {p.rating?.toFixed?.(1) ?? '—'}</span>
             <span className="text-muted-foreground">·</span>

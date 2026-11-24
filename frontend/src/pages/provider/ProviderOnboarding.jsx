@@ -148,6 +148,7 @@ export default function ProviderOnboarding() {
         })),
       });
       toast.success(editing ? 'Specializations updated' : 'You\'re all set — matched jobs will appear on your dashboard');
+      window.scrollTo({ top: 0 });
       navigate('/provider/dashboard');
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Could not save');

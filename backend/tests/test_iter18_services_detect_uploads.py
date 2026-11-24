@@ -42,9 +42,9 @@ class TestTaxonomy:
         assert len(c["subcategories"]) == 16
         assert {"End of Tenancy Cleaning", "Water Blasting", "Carpet Cleaning"} <= {s["name"] for s in c["subcategories"]}
 
-    def test_commercial_taxonomy_removed(self):
+    def test_commercial_taxonomy_back(self):
         r = requests.get(f"{BASE_URL}/api/services/taxonomy/commercial")
-        assert r.status_code == 404
+        assert r.status_code == 200
 
 
 # ---- Auto-detect ----

@@ -28,10 +28,10 @@ LUCIDE_KNOWN = {
 
 # ------------------------ taxonomy endpoints ------------------------
 
-def test_commercial_taxonomy_removed():
-    # Residential-only app: commercial taxonomy endpoint removed
+def test_commercial_taxonomy_back():
+    # Iter22: commercial track restored
     r = requests.get(f"{API}/services/commercial-taxonomy")
-    assert r.status_code == 404
+    assert r.status_code == 200
 
 
 def test_residential_taxonomy():
@@ -51,7 +51,7 @@ def test_unified_taxonomy_residential():
 
 def test_unified_taxonomy_commercial():
     r = requests.get(f"{API}/services/taxonomy/commercial")
-    assert r.status_code == 404
+    assert r.status_code == 200 and r.json()["total_categories"] == 18
 
 
 def test_unified_taxonomy_invalid():
@@ -59,9 +59,9 @@ def test_unified_taxonomy_invalid():
     assert r.status_code == 404
 
 
-def test_commercial_category_electrical_removed():
+def test_commercial_category_electrical_back():
     r = requests.get(f"{API}/services/commercial-taxonomy/electrical")
-    assert r.status_code == 404
+    assert r.status_code == 200
 
 
 def test_residential_category_plumbing():
@@ -130,13 +130,13 @@ def test_create_job_residential_with_subcategory(customer_session):
     assert j["service_type"] == "residential"
 
 
-def test_create_job_commercial_rejected(customer_session):
-    # Residential-only: commercial jobs are rejected
+def test_create_job_commercial_allowed(customer_session):
+    # Iter22: commercial jobs allowed again
     payload = {"title": "TEST_ HVAC service", "description": "AC", "category": "hvac-mechanical",
                "subcategory": "commercial-air-conditioning", "service_type": "commercial",
                "location": "Auckland", "urgency": "asap", "mode": "quotes", "photos": []}
     r = customer_session.post(f"{API}/jobs", json=payload)
-    assert r.status_code == 400, r.text
+    assert r.status_code == 200, r.text
 
 
 def test_create_job_without_subcategory_still_works(customer_session):

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { PENDING_SIGNUP_KEY, afterSignupPath, ROLE_HOME } from './Signup';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -23,14 +24,21 @@ export default function AuthCallback() {
       try {
         // Server sets httpOnly session_token cookie automatically (SameSite=None; Secure)
         const res = await api.post('/auth/session', { session_id: sessionId, role });
-        setUser(res.data.user);
+        let u = res.data.user;
         localStorage.removeItem('dispatchr_pending_role');
-        const u = res.data.user;
-        const target =
-          u.role === 'provider' ? '/provider/dashboard' :
-          u.role === 'property' ? '/property/dashboard' :
-          u.role === 'insurance' ? '/insurance/dashboard' : '/client-home';
-        navigate(target, { replace: true, state: { user: u } });
+        // Google sign-up: send the role-specific details collected before the redirect
+        const pending = localStorage.getItem(PENDING_SIGNUP_KEY);
+        if (pending && u.signup_complete === false) {
+          try {
+            const r = await api.post('/auth/complete-signup', JSON.parse(pending));
+            u = r.data;
+          } catch (e) { console.error('[AuthCallback] complete-signup failed:', e); }
+        }
+        localStorage.removeItem(PENDING_SIGNUP_KEY);
+        setUser(u);
+        if (u.signup_complete === false) { navigate('/signup', { replace: true }); return; }
+        const isNew = !!pending;
+        navigate(isNew ? afterSignupPath(u.role) : (ROLE_HOME[u.role] || '/client-home'), { replace: true, state: { user: u } });
       } catch (err) {
         console.error('[AuthCallback] session exchange failed:', err);
         navigate('/login', { replace: true });
