@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
@@ -81,8 +81,10 @@ export default function Signup() {
   const [details, setDetails] = useState({});
   const [login, setLogin] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
+  // Set once this page creates/completes the account, so the "already signed in" redirect doesn't override afterSignupPath
+  const justSignedUp = useRef(false);
 
-  useEffect(() => { if (user && user.signup_complete !== false) navigate(ROLE_HOME[user.role] || '/client-home', { replace: true }); }, [user, navigate]);
+  useEffect(() => { if (user && user.signup_complete !== false && !justSignedUp.current) navigate(ROLE_HOME[user.role] || '/client-home', { replace: true }); }, [user, navigate]);
 
   const fields = useMemo(() => FIELDS[role] || [], [role]);
   const roleMeta = ROLES.find((r) => r.id === role);
@@ -114,10 +116,12 @@ export default function Signup() {
     if (completing) { await finishGoogle(); return; }
     setLoading(true);
     try {
+      justSignedUp.current = true;
       const u = await register({ ...payload(), email: login.email.trim().toLowerCase(), password: login.password });
       toast.success(`Welcome to Pro Finder NZ, ${u.name}!`);
       navigate(afterSignupPath(u.role));
     } catch (err) {
+      justSignedUp.current = false;
       toast.error(extractError(err, 'Signup failed'));
     } finally { setLoading(false); }
   };
@@ -126,6 +130,7 @@ export default function Signup() {
     setLoading(true);
     try {
       const r = await api.post('/auth/complete-signup', payload());
+      justSignedUp.current = true;
       setUser(r.data);
       localStorage.removeItem(PENDING_SIGNUP_KEY);
       toast.success(`Welcome to Pro Finder NZ, ${r.data.name}!`);
@@ -161,13 +166,13 @@ export default function Signup() {
           {step === 0 && (
             <>
               <h1 className="text-2xl font-bold text-foreground">{completing ? 'Finish setting up your account' : 'Create your account'}</h1>
-              <p className="text-muted-foreground text-sm mt-1">What best describes you? We'll tailor your signup.</p>
+              <p className="text-muted-foreground text-sm mt-1">What best describes you? We&apos;ll tailor your signup.</p>
               <div className="grid sm:grid-cols-2 gap-2.5 mt-5">
                 {ROLES.map((r) => {
                   const Icon = r.icon;
                   const on = role === r.id;
                   return (
-                    <button key={r.id} type="button" data-testid={`signup-role-${r.id}`} aria-pressed={on} onClick={() => { setRole(r.id); setDetails({}); }}
+                    <button key={r.id} type="button" data-testid={`signup-role-${r.id}`} aria-pressed={on} onClick={() => { setRole(r.id); setDetails({}); setAbout((a) => ({ ...a, account_type: r.id === 'facilities' ? 'commercial' : 'residential' })); }}
                       className={`relative flex items-center gap-3 p-3.5 rounded-xl border-2 text-left transition-colors ${on ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}>
                       <span className={`w-10 h-10 rounded-lg ${r.color} text-white flex items-center justify-center shrink-0`}><Icon className="w-5 h-5" /></span>
                       <span className="min-w-0">

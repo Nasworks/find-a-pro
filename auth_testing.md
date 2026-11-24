@@ -1,40 +1,4 @@
-# Auth-Gated App Testing Playbook
-
-## Step 1: Create Test User & Session
-mongosh --eval "
-use('test_database');
-var userId = 'test-user-' + Date.now();
-var sessionToken = 'test_session_' + Date.now();
-db.users.insertOne({
-  user_id: userId,
-  email: 'test.user.' + Date.now() + '@example.com',
-  name: 'Test User',
-  picture: 'https://via.placeholder.com/150',
-  role: 'customer',
-  created_at: new Date()
-});
-db.user_sessions.insertOne({
-  user_id: userId,
-  session_token: sessionToken,
-  expires_at: new Date(Date.now() + 7*24*60*60*1000),
-  created_at: new Date()
-});
-print('Session token: ' + sessionToken);
-print('User ID: ' + userId);
-"
-
-## Step 2: Test Backend API
-curl -X GET "https://your-app.com/api/auth/me" -H "Authorization: Bearer YOUR_SESSION_TOKEN"
-
-## Step 3: Browser Testing
-Set cookie `session_token` with domain, path=/, httpOnly=true, secure=true, sameSite=None
-
-## Success Indicators
-- /api/auth/me returns user data
-- Dashboard loads without redirect
-- CRUD operations work
-
-## Notes
-- User document uses `user_id` field (custom UUID), not `_id`
-- All queries use `{"_id": 0}` projection
-- Session user_id must match user.user_id
+# Auth testing
+- Email/password: POST /api/auth/register {email,name,password,role,business_name?,account_type?,signup_details{}}; POST /api/auth/login; GET /api/auth/me (returns is_reviewer)
+- Google: Emergent Google auth (auth.emergentagent.com -> /client-home#session_id -> AuthCallback -> POST /api/auth/session). Can't log in via Google in tests: insert a users doc with signup_complete:false + user_sessions row {user_id, session_token, expires_at future}, set session_token cookie, then the app must redirect to /signup (completion mode, 2 steps) and POST /api/auth/complete-signup.
+- Demo logins: POST /api/auth/demo-login {role}

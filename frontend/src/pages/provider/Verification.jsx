@@ -132,7 +132,7 @@ export default function Verification() {
                 <div className="text-xs text-muted-foreground mt-0.5">{KINDS.find((k) => k.v === d.kind)?.l}{d.issuer ? ` · ${d.issuer}` : ''}{d.expiry ? ` · ${d.expiry}` : ''}</div>
                 {d.status === 'rejected' && d.review_note && <div className="text-xs text-rose-600 mt-1">Reviewer: {d.review_note}</div>}
               </div>
-              <button type="button" onClick={() => remove(d)} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-accent" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
+              <button type="button" onClick={() => remove(d)} data-testid={`doc-delete-${d.doc_id}`} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-accent" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
             </div>
           );
         })}

@@ -23,6 +23,24 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 7. Live Map, News Feed, Cost Estimator, Community Forum, Legal & Privacy, Guide & Help, Report Provider, Disputes, More menu
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
+## What's Implemented (2026-11 — Commercial track back, matching engine, role-based signup)
+- ✅ Commercial taxonomy restored (18 cats incl. "Commercial Cleaning & Facility Hygiene" → "Commercial Kitchen & Hood Cleaning"); residential 25 cats. Residential-only purge removed.
+- ✅ Job sizes `pricing_type` small_fixed | hourly | large_quote (+ budget_or_estimate, preferred_date) in Book flow (step 3 "Job size" → details window) and /post-job. Hourly jobs show a materials/equipment-hire disclaimer pop-up before posting.
+- ✅ Provider onboarding wizard `/provider/onboarding` (business details, size, tracks, suburbs → searchable specialization tree → job sizes + rate per spec). `provider_specializations` collection. Dashboard redirects un-onboarded providers.
+- ✅ Matching engine `dispatch_job()` (category+sub+track+job size+suburb/radius) → `job_matches` + `notifications`. Provider "New Matched Jobs" feed (Accept & Claim / Submit Quote / Decline), Active + Recently completed; client JobMatchesPanel (notified/responded, Award). Award → job `assigned`, accepted bid + booking created, others closed. `/jobs/{id}/progress` assigned→in_progress→done (booking synced). Notification bell (desktop + mobile).
+- ✅ Seed specs: Demo Trade Co., Sarah Chen Plumbing (suburb list), MP Electrical, SparkClean Services.
+- ✅ Role-based signup `/signup` (6 account types, role-specific questions, Google or email/password; Google users finish via `/auth/complete-signup`). Providers → `/provider/verification?welcome=1` (documents, optional) → onboarding.
+- ✅ Provider documents (qualification / certification / police check, PDF or photo) → reviewer approval (`REVIEWER_EMAILS` = nasretm@gmail.com, page `/review/documents`) → ticks "Qualifications verified" / "Police checked" on profile, dashboard, matches panel. Credential files private to owner + reviewers.
+- ✅ Address search fallback: Google (invalid key) → Photon → Nominatim.
+
+## Pending user requests (not started)
+- Receipt scanner for providers with cost types (materials, equipment purchase, equipment hire, third-party service…).
+- Company main account + employee sub-accounts: send jobs to subs, GPS + mandatory timesheets (optional auto-timesheet from GPS), scanned receipts, main↔sub message board.
+- Active-job project timeline module (main account updates stage, sends updates to client).
+- Final invoice collation + manual edit (hours, travel/material/hire/fuel costs).
+- Camera/photo access in mobile mode everywhere media is uploaded (job posting, messages client/provider/worker).
+- Payments: Stripe (+ Google Pay / Apple Pay), pay from invoice/receipt, job history paid/unpaid, Stripe fee disclosure, 5% client platform fee + 5% deducted from provider.
+
 ## What's Implemented (2026-11 — Residential-only + expanded taxonomy)
 - ✅ **Residential-only app**: commercial taxonomy, endpoints (`/services/commercial-taxonomy*`, `/services/taxonomy/commercial` → 404) and all Residential/Commercial toggles removed (Book flow is now 1 Describe/Browse → 2 Post Job). POST /jobs and /properties accept only residential. Startup `purge_commercial_data()` deletes commercial jobs (+bids) and commercial/mixed properties, converts `rental` → residential (idempotent, also cleans production).
 - ✅ **Facilities Management kept, reworded** for apartment buildings & body corporates (dashboard, landing card, sidebar "Maintenance Requests").

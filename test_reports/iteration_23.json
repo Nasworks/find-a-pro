@@ -1,0 +1,59 @@
+{
+  "summary": "Tested role-specific signup (all 6 roles, UI + API), Google completion mode, provider document upload/delete, reviewer approve/send-back, ticks on verification page/public profile, hourly disclaimer (Post Job + Book flow), demo logins, email lowercasing, matching-engine regression (iter22 suite) and address search. Backend: 20/20 new tests pass + 22/22 iter22 regression pass; 2 security probes fail (see issues). Frontend: one CRITICAL bug found and fixed by me — new providers (email signup AND Google 'Finish') were sent to /provider/verification?welcome=1 and then immediately bounced to /provider/dashboard -> /provider/onboarding, so the documents step (Step 2 of 3) was skipped. After my fix all UI flows pass.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/files/{file_id}/{filename}", "issue": "Any logged-in user can download any file, including a provider's police check / qualification PDFs, if they know the URL. There is no owner/reviewer check. Police-vetting documents are sensitive personal data. Fix: if the file is linked to provider_documents, allow only the owner or is_reviewer(user) (or keep a private flag on files uploaded for documents). Covered by tests/test_iter23_security_probes.py::test_other_user_cannot_read_police_check_file (currently FAILS).", "priority": "HIGH"},
+      {"endpoint": "PATCH /api/auth/role", "issue": "When a customer switches to provider, the provider_profile it creates has verified=True, insured=True and rating=4.7. That skips the new review process. The UI 'Switch Account Type' gives users a way to look verified without a review. Fix: create it with verified/qualified_verified/police_checked/insured=False, rating 0, the same as register. Covered by test_iter23_security_probes.py::test_role_switch_does_not_grant_verified (currently FAILS).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/auth/demo-login, POST /api/auth/register", "issue": "The response user has no is_reviewer field (login, /me, session and complete-signup do include it). This only matters until /me refreshes."},
+      {"endpoint": "_refresh_provider_ticks", "issue": "Sets verified = qualified or police. ProviderProfile then shows an 'ID Verified' badge when only a qualification was approved, which is misleading. It also overwrites the legacy 'verified' flag of seeded providers the first time any of their docs is reviewed."},
+      {"endpoint": "POST /api/auth/complete-signup", "issue": "Legacy users with no signup_complete field (e.g. demo accounts) can change their role through this endpoint, because the guard only checks signup_complete truthy. Consider `user.get('signup_complete') is not False`."},
+      {"endpoint": "GET /api/address/search", "issue": "'10 Queen Street Auckland' returns Rodney 0910 results first instead of Auckland CBD (relevance only; endpoint works)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Signup.jsx", "issue": "FIXED BY TESTER: the useEffect `if (user && user.signup_complete !== false) navigate(ROLE_HOME...)` ran after register()/complete-signup set the user. It overrode navigate(afterSignupPath), so providers ended up on /provider/onboarding and never saw the documents step. Fixed with a justSignedUp ref.", "selector": "[data-testid=signup-next]", "priority": "CRITICAL (fixed)"}
+    ],
+    "integration_issues": [
+      {"flow": "AuthCallback (Google) for an EXISTING account clicked from /signup", "issue": "isNew = !!pending, so an existing user who presses 'Sign up with Google' is routed to afterSignupPath (provider -> verification welcome). Their chosen role/details are silently ignored and no message tells them they already have an account. Not reachable in preview (real Google OAuth), found by code review.", "affected_selectors": ["[data-testid=signup-google]"]},
+      {"flow": "ReviewDocuments", "issue": "The Approved and Rejected tabs have no actions, so a reviewer cannot revoke an approval or approve a re-check from those tabs. The provider has to upload again.", "affected_selectors": ["[data-testid^=review-tab-]"]}
+    ],
+    "design_issues": [
+      {"screen": "/provider/verification", "issues": ["The Expiry date field uses the browser's native date input (mm/dd/yyyy) instead of the shadcn Calendar/DatePicker", "The 'Issued by' and 'Licence / reference number' inputs have no data-testid"]},
+      {"screen": "/login", "issues": ["The email/password inputs and the submit button have no data-testid"]},
+      {"screen": "Signup step 2 (facilities)", "issues": ["Account type defaults to 'residential' for Facilities in the UI, but the backend default for facilities is 'commercial'. A new facilities user lands on the 'Residential Facilities Portal'. Consider defaulting to commercial for facilities."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter23_signup_docs_review.py", "/app/backend/tests/test_iter23_security_probes.py", "/app/test_reports/pytest/iter23.xml"],
+  "action_items": [
+    "Restrict GET /api/files for provider document files to the owner and reviewers (police checks are exposed to any logged-in user)",
+    "PATCH /api/auth/role: create provider profiles unverified (verified/insured False, rating 0), the same as register",
+    "Create /app/memory/test_credentials.md. It is MISSING. Also add reviewer.test@profinder.test to REVIEWER_EMAILS permanently: the account did not exist and was not in REVIEWER_EMAILS, so the tester created it and added it to backend/.env",
+    "Add is_reviewer to the register/demo-login responses",
+    "Do not show the 'ID Verified' badge from the verified flag when only qualification/police ticks were approved; keep the semantics separate",
+    "Optional: replace the native date input on Verification with the shadcn DatePicker; default facilities account_type to commercial; tell existing users who press Google signup that they already have an account"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 4500+ lines; auth/signup/documents/review should move into their own router modules",
+    "The REVIEWER_EMAILS parsing is duplicated (is_reviewer and add_document); reuse one helper",
+    "The provider_profile default dict is duplicated in register, google_session, complete_signup and switch_role (and switch_role is inconsistent: verified True). Extract _default_provider_profile()",
+    "google_session pops password_hash twice (harmless typo)",
+    "Verification.jsx uses window.confirm for delete; consider the shadcn AlertDialog for consistency"
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/Signup.jsx (justSignedUp ref so afterSignupPath is not overridden)",
+    "/app/frontend/src/pages/provider/Verification.jsx (added data-testid doc-delete-{doc_id})",
+    "/app/backend/.env (REVIEWER_EMAILS now includes reviewer.test@profinder.test; backend restarted)",
+    "/app/backend/tests/test_iter23_signup_docs_review.py",
+    "/app/backend/tests/test_iter23_security_probes.py"
+  ],
+  "success_rate": {"backend": "91% (20/22 iter23 incl. 2 failing security probes; iter22 regression 22/22)", "frontend": "100% after tester fix (1 critical redirect bug fixed)"},
+  "test_credentials": "/app/memory/test_credentials.md does NOT exist. Used demo-login buttons (Demo123!) and reviewer.test@profinder.test / Review123!. The tester created this account as a customer and added it to REVIEWER_EMAILS; it was left in place for future runs.",
+  "seed_data_creation": "Created the reviewer account reviewer.test@profinder.test (kept). All other test users, provider profiles, documents, files, sessions, notifications and the 3 jobs (job_4a01e0d4f6, job_2af0517643, job_8635f99e6c) were deleted by id. The pre-existing pending doc 'NZ Police vetting' (SigCo) was not touched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with `-p no:xdist -o addopts=''` for the iter23 file (it shares a module-level CREATED_USERS cleanup list). The Google completion mode was simulated by inserting a user with signup_complete:false plus a user_sessions row and setting the session_token cookie. The Login page has no testids: use input[type=email]/[type=password]/button[type=submit]. The Book flow is client-home > service-search-input > service-search-book > booking-type-residential > booking-find-describe > booking-size-hourly; description is HTML-required.",
+  "rca of the issue": "Signup redirect bug: register() and setUser() update AuthContext.user while Signup is still mounted. The 'already signed in' useEffect then fires navigate(ROLE_HOME[role]) after goNext's navigate(afterSignupPath), so the last navigation wins: /provider/dashboard, which redirects not-onboarded providers to /provider/onboarding. Repro: sign up as a provider and watch the URL go verification -> onboarding within about 1s. Mitigation applied: a useRef flag set before register/complete-signup that suppresses the effect redirect."
+}

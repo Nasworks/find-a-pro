@@ -496,7 +496,7 @@ async def register(payload: UserCreate, response: Response):
     set_auth_cookie(response, token)
     doc.pop("password_hash", None)
     doc.pop("_id", None)
-    return {"user": doc, "token": token}
+    return {"user": {**doc, "is_reviewer": is_reviewer(doc)}, "token": token}
 
 
 @api.post("/auth/login")
@@ -729,7 +729,7 @@ async def complete_signup(payload: SignupCompleteIn, user=Depends(require_user))
     """Used after Google sign-up: stores the role-specific details collected before the redirect."""
     if payload.role not in SIGNUP_ROLES:
         raise HTTPException(status_code=400, detail="Unknown account type")
-    if user.get("signup_complete") and user.get("role") != payload.role:
+    if user.get("signup_complete") is not False and user.get("role") != payload.role:
         raise HTTPException(status_code=400, detail="This account already has a different account type")
     upd = _signup_fields(payload.role, payload.account_type, payload.business_name, payload.signup_details)
     upd["role"] = payload.role
@@ -768,7 +768,7 @@ async def _refresh_provider_ticks(provider_id: str):
     qualified = bool(kinds & {"qualification", "certification"})
     police = "police_check" in kinds
     await db.provider_profiles.update_one({"user_id": provider_id}, {"$set": {
-        "qualified_verified": qualified, "police_checked": police, "verified": qualified or police}})
+        "qualified_verified": qualified, "police_checked": police}})
 
 
 @api.get("/providers/me/documents")
@@ -891,11 +891,11 @@ async def switch_role(request: Request, user=Depends(require_user)):
                 "business_name": user["name"],
                 "categories": [],
                 "hourly_rate": 85.0,
-                "rating": 4.7,
+                "rating": 0.0,
                 "reviews_count": 0,
                 "jobs_completed": 0,
-                "verified": True,
-                "insured": True,
+                "verified": False, "qualified_verified": False, "police_checked": False,
+                "insured": False,
                 "plan": "free",
                 "online": False,
                 "bio": "",
@@ -2570,6 +2570,10 @@ async def get_file(file_id: str, filename: str, request: Request, user=Depends(r
     rec = await db.files.find_one({"file_id": file_id, "is_deleted": False}, {"_id": 0})
     if not rec:
         raise HTTPException(status_code=404, detail="File not found")
+    # Provider credential files (police checks, qualifications) are private: owner + reviewers only
+    if rec.get("owner_id") != user["user_id"] and not is_reviewer(user):
+        if await db.provider_documents.find_one({"file_url": {"$regex": f"^/api/files/{file_id}/"}}, {"_id": 1}):
+            raise HTTPException(status_code=404, detail="File not found")
     data, _ = await asyncio.to_thread(get_object, rec["storage_path"])
     headers = {"Cache-Control": "private, max-age=86400", "Accept-Ranges": "bytes"}
     rng = request.headers.get("range")
