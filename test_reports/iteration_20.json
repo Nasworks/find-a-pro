@@ -1,0 +1,39 @@
+{
+  "summary": "Tested saved properties + address autocomplete + job location picker end to end. Backend: 10 iter20 tests plus the iter19 regression, 15 of 16 pass. Address search returns OSM (Photon) NZ results with lat/lng; queries under 3 characters return empty; details returns 400 without a Google key. Property CRUD, validation, single primary, primary reassignment on delete, owner-only access and job property_id checks (foreign property gives 400) all work. Job access_notes are copied from the property and hidden on GET /jobs/{id} for non-hired providers and on /jobs/board. One privacy leak: GET /api/bids/mine returns the full job, including access_notes, to providers whose bid is still pending. Frontend: Profile 'My properties' card works for customer (add with autocomplete, edit with prefill, make main, delete). It shows for landlord/property/facilities and is hidden for provider/insurance. In the Book flow the picker preselects the primary property. Picking a commercial property while Residential was chosen switches the type, shows a toast and switches the service to Commercial Plumbing. 'Search another address' gives suggestions, the save tick is on by default, and posting saved the new property (name, lat/lng) with the job linked by property_id. Landlord with no properties sees address search directly with the tick on. Posting with no address shows an error toast. Free-text address with the tick off posts the job without saving a property. Mobile 390px has no horizontal page overflow and the dialog and dropdowns work, but there is a minor card overflow (below).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/bids/mine", "issue": "Privacy leak: each bid includes the full job document, including access_notes (gate codes etc.), even when the bid is pending or rejected. Reproduced in test_bids_mine_does_not_leak_access_notes. Fix: project {'_id':0,'access_notes':0} in the db.jobs.find at server.py ~L993, or strip it unless bid.status == 'accepted'.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/properties", "issue": "No role check: provider/insurance can create properties via the API even though the UI hides the card. Fine if intended."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AddressAutocomplete", "issue": "When the dropdown shows 'No matching addresses — you can keep what you typed.', Escape does not close it. onKeyDown returns early when results.length is 0. The open dropdown then covers the 'Save to my properties' checkbox directly below, so the first click lands on the dropdown and the user must click elsewhere first.", "selector": "[data-testid='post-job-location-suggestions']", "priority": "MEDIUM"},
+      {"component": "JobLocationPicker (mobile 390px)", "issue": "Property cards with long addresses stretch past the right edge of the form container (cards about 38px wider than the address input) and the address text is not truncated. The grid items need min-w-0 (or grid-cols-[minmax(0,1fr)]) so truncate takes effect.", "selector": "[data-testid^='job-location-property-']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Post job picker", "issues": ["The save tick briefly shows unchecked for users with no properties until /properties/mine resolves. Minor flicker.", "Provider/insurance users (canSaveProperties=false) would still see a 'Save to my properties' checkbox in the picker that does nothing. Hide it when !canSaveProperties."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter20_properties_address.py", "/app/test_reports/pytest/pytest_iter20.xml"],
+  "action_items": [
+    "Strip access_notes from jobs returned by GET /api/bids/mine unless the provider's bid is accepted",
+    "AddressAutocomplete: let Escape close the list even with 0 results; optionally close the 'no match' list on blur or Tab so it doesn't cover the save checkbox",
+    "JobLocationPicker: add min-w-0 to property card buttons so long addresses truncate on mobile",
+    "Hide the 'Save to my properties' checkbox when the user's role can't save properties"
+  ],
+  "critical_code_review_comments": [
+    "server.py my_bids (~L993) and any other db.jobs.find returning jobs to providers should exclude access_notes; /timesheets/jobs is OK (accepted only)",
+    "Inconsistent status codes: PATCH and make-primary return 404 for a non-owner, DELETE returns 403. Works, but unify.",
+    "server.py is 3780 lines. It should be split into routers (properties/address could be their own module)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter20_properties_address.py"],
+  "success_rate": {"backend": "94% (15/16 incl. iter19 regression)", "frontend": "95%"},
+  "seed_data_creation": "None kept. All TEST properties and jobs created on demo customer, landlord and provider were deleted. Demo customer is back to 2 properties (Home main, Office); demo landlord has 0.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Log in with POST /api/auth/demo-login {role}. Run pytest with -n0. Demo customer properties: prop_06f6505a8f Home (main), prop_94575790c6 Office (residential). Book flow: service-search-input -> service-search-book -> booking-type-residential -> booking-find-describe -> booking-mode-post. The picker is job-location-picker. Re-run test_iter20_properties_address.py: test_bids_mine_does_not_leak_access_notes should pass after the fix. To close the address dropdown in Playwright, click outside (Escape doesn't work when there are no results)."
+}

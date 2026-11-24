@@ -77,8 +77,8 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
   const [findMode, setFindMode] = useState(''); // flow only: 'describe' | 'browse'
   const [detailsOpen, setDetailsOpen] = useState(false); // flow only: job details window
   const [properties, setProperties] = useState([]);
-  const [loc, setLoc] = useState({ property_id: null, address: '', lat: null, lng: null, save: false, save_name: '' });
   const canSaveProperties = PROPERTY_ROLES.has(user?.role);
+  const [loc, setLoc] = useState({ property_id: null, address: '', lat: null, lng: null, save: canSaveProperties, save_name: '' });
 
   useEffect(() => {
     if (!canSaveProperties) return;
@@ -336,7 +336,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
       <div>
         <Label>Location</Label>
         <div className="mt-1.5">
-          <JobLocationPicker properties={properties} value={loc} onChange={setLoc} onPickProperty={pickProperty} />
+          <JobLocationPicker properties={properties} value={loc} onChange={setLoc} onPickProperty={pickProperty} canSave={canSaveProperties} />
         </div>
       </div>
 

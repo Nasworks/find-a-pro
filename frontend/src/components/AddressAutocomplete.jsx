@@ -55,14 +55,16 @@ export default function AddressAutocomplete({ value, onChange, onSelect, placeho
   };
 
   const onKeyDown = (e) => {
+    if (e.key === 'Escape' || e.key === 'Tab') { setOpen(false); return; }
     if (!open || !results.length) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, results.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
     else if (e.key === 'Enter' && active >= 0) { e.preventDefault(); choose(results[active]); }
-    else if (e.key === 'Escape') setOpen(false);
   };
 
-  const showList = open && (value || '').trim().length >= 3 && (results.length > 0 || !loading);
+  const typed = (value || '').trim().length >= 3;
+  const showList = open && typed && results.length > 0;
+  const showNoMatch = open && typed && !loading && results.length === 0;
 
   return (
     <div ref={wrapRef} className="relative">
@@ -85,9 +87,7 @@ export default function AddressAutocomplete({ value, onChange, onSelect, placeho
       </span>
       {showList && (
         <ul className="absolute z-50 left-0 right-0 mt-1.5 py-1 bg-popover border border-border rounded-xl shadow-xl max-h-72 overflow-y-auto" data-testid={`${testid}-suggestions`}>
-          {results.length === 0 ? (
-            <li className="px-3 py-2.5 text-xs text-muted-foreground">No matching addresses — you can keep what you typed.</li>
-          ) : results.map((r, i) => (
+          {results.map((r, i) => (
             <li key={r.id}>
               <button
                 type="button"
@@ -108,6 +108,9 @@ export default function AddressAutocomplete({ value, onChange, onSelect, placeho
             <li className="px-3 pt-1 pb-1.5 text-[10px] text-muted-foreground text-right">Addresses © OpenStreetMap</li>
           )}
         </ul>
+      )}
+      {showNoMatch && (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testid}-no-match`}>No matching addresses — you can keep what you typed.</p>
       )}
     </div>
   );

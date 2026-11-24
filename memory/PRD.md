@@ -23,6 +23,14 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 7. Live Map, News Feed, Cost Estimator, Community Forum, Legal & Privacy, Guide & Help, Report Provider, Disputes, More menu
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
+## What's Implemented (2026-11 — Search-first booking, Post Job only, saved properties)
+- ✅ **Customer home = search bar only** (`pages/client/ClientHome.jsx`, `components/ServiceSearch.jsx`): predictive service suggestions (both taxonomies + `/services/detect` keywords) + **Book** button.
+- ✅ **Book panel** (`components/BookingPanel.jsx`, full-screen, slides from right) → `components/JobRequestForm.jsx` flow mode: 1 Property type (Residential/Commercial) → 2 Describe your job / Browse providers → 3 Type of quotation = **Post Job only** → opens 2nd full-screen window with job details. `/post-job` page reuses the same form (page mode).
+- ✅ **No limits on quotes/bids**: every job posted with mode `bids`; GET /jobs/{id} returns all bids.
+- ✅ **Saved properties** (all job-posting roles: customer, landlord, property, facilities): Profile "My properties" card (`MyPropertiesCard`, `PropertyFormDialog`) — main + secondary, name, address, residential/commercial, bedrooms, bathrooms, access notes. API: POST/GET mine/PATCH/DELETE `/api/properties`, POST `/api/properties/{id}/primary`.
+- ✅ **Job location picker** (`JobLocationPicker`, `AddressAutocomplete`): pick saved property (main preselected) or search address; "Save to my properties" tick. Jobs store `property_id`, `location_lat/lng`, private `access_notes` (visible only to client, approver, accepted provider).
+- ✅ **Address search** `GET /api/address/search` (+ `/api/address/details`): Google Places (New) when `GOOGLE_MAPS_API_KEY` set in backend/.env, otherwise free OpenStreetMap (Photon) NZ search.
+
 ## What's Implemented (2026-11 — Touch redesign, invoice sending, service area)
 - ✅ **Phone/tablet touch shell (<1024px)**; desktop (≥1024) unchanged. Top bar + bottom nav (3–4 role tabs + **Menu** → left side sheet with full role sidebar). `ViewModeContext` (`compact`, `framed`, `inFrame`).
 - ✅ **Desktop "Mobile view"** = real phone preview: device frame with an iframe of the app (true breakpoints) + "Back to desktop".

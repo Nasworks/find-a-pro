@@ -993,7 +993,10 @@ async def my_bids(user=Depends(require_user)):
     jobs = await db.jobs.find({"job_id": {"$in": job_ids}}, {"_id": 0}).to_list(None)
     jobs_map = {j["job_id"]: j for j in jobs}
     for b in bids:
-        b["job"] = jobs_map.get(b["job_id"])
+        job = jobs_map.get(b["job_id"])
+        if job is not None and b.get("status") != "accepted":
+            job = {k: v for k, v in job.items() if k != "access_notes"}  # private until hired
+        b["job"] = job
     return bids
 
 
@@ -1240,7 +1243,7 @@ async def make_primary_property(property_id: str, user=Depends(require_user)):
 async def delete_property(property_id: str, user=Depends(require_user)):
     p = await db.properties.find_one({"property_id": property_id})
     if not p or p["owner_id"] != user["user_id"]:
-        raise HTTPException(status_code=403, detail="Not allowed")
+        raise HTTPException(status_code=404, detail="Property not found")
     await db.properties.delete_one({"property_id": property_id})
     if p.get("is_primary"):
         nxt = await db.properties.find_one({"owner_id": user["user_id"]}, sort=[("created_at", 1)])
@@ -1255,8 +1258,15 @@ NZ_BBOX = "166.0,-47.5,179.0,-34.0"
 OSM_UA = {"User-Agent": "ProFinderNZ/1.0 (address search)"}
 
 
+_GOOGLE_DISABLED_UNTIL: Dict[str, datetime] = {}  # key -> time; skip Google briefly after an auth failure
+
+
 def _google_key() -> str:
-    return (os.environ.get("GOOGLE_MAPS_API_KEY") or "").strip()
+    k = (os.environ.get("GOOGLE_MAPS_API_KEY") or "").strip()
+    until = _GOOGLE_DISABLED_UNTIL.get(k)
+    if k and until and until > datetime.now(timezone.utc):
+        return ""
+    return k
 
 
 def _photon_label(p: Dict[str, Any]) -> Dict[str, str]:
@@ -1321,6 +1331,8 @@ async def address_search(q: str, session: Optional[str] = None, user=Depends(req
             return {"source": "google", "results": await _google_search(q, session)}
         except Exception as e:  # fall back to free search if Google fails
             logging.warning(f"Google address search failed, falling back to OSM: {e}")
+            if isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (400, 401, 403):
+                _GOOGLE_DISABLED_UNTIL[(os.environ.get("GOOGLE_MAPS_API_KEY") or "").strip()] = datetime.now(timezone.utc) + timedelta(minutes=10)
     try:
         return {"source": "osm", "results": await _photon_search(q)}
     except Exception as e:
