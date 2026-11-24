@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Briefcase, MessageSquare, User, LayoutDashboard, ClipboardList, Wrench, KeyRound, Building2, Shield, Plus, Clock, Menu } from 'lucide-react';
+import { Home, Briefcase, MessageSquare, User, LayoutDashboard, ClipboardList, Wrench, KeyRound, Building2, Shield, Plus, Clock, Menu, MessagesSquare } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../ui/sheet';
 import Sidebar from './Sidebar';
 import { useAuth } from '../../context/AuthContext';
 
 const roleTabs = {
+  worker: [
+    { to: '/worker/jobs', label: 'Jobs', icon: ClipboardList },
+    { to: '/team/board', label: 'Team', icon: MessagesSquare },
+    { to: '/messages', label: 'Chat', icon: MessageSquare },
+  ],
   customer: [
     { to: '/client-home', label: 'Home', icon: Home },
     { to: '/my-job-posts', label: 'Jobs', icon: Briefcase },

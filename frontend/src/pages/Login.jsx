@@ -5,7 +5,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { toast } from 'sonner';
-import { Loader2, User as UserIcon, Wrench, Building2, KeyRound, Shield, HardHat, Sparkles } from 'lucide-react';
+import { Loader2, User as UserIcon, Wrench, Building2, KeyRound, Shield, HardHat, Sparkles, Users } from 'lucide-react';
 import Logo from '../components/Logo';
 import { extractError } from '../lib/errors';
 
@@ -16,6 +16,7 @@ const ROLE_TO_PATH = {
   facilities: '/facilities/dashboard',
   insurance: '/insurance/dashboard',
   customer: '/client-home',
+  worker: '/worker/jobs',
 };
 
 const DEMO_ROLES = [
@@ -25,6 +26,7 @@ const DEMO_ROLES = [
   { id: 'landlord',   label: 'Landlord',       icon: KeyRound,  color: 'bg-orange-500' },
   { id: 'facilities', label: 'Facilities',     icon: HardHat,   color: 'bg-slate-600' },
   { id: 'insurance',  label: 'Insurance',      icon: Shield,    color: 'bg-teal-500' },
+  { id: 'worker',     label: 'Employee',       icon: Users,     color: 'bg-sky-600' },
 ];
 
 export default function Login() {

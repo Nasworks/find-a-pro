@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Briefcase, CalendarCheck, MessageSquare, User, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, History, Share2, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Heart, Clock , Receipt, FolderKanban } from 'lucide-react';
+import { Home, Briefcase, CalendarCheck, MessageSquare, User, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, History, Share2, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Heart, Clock , Receipt, FolderKanban, MessagesSquare } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Logo from '../Logo';
 import { User as UserIcon, Wrench as WrenchIcon, Building2 as B2, Shield as ShieldIcon } from 'lucide-react';
@@ -40,6 +40,7 @@ const providerNav = [
   ]},
   { section: 'Team & Ops', items: [
     { to: '/provider/team', label: 'Team', icon: Users },
+    { to: '/team/board', label: 'Team Board', icon: MessagesSquare },
     { to: '/provider/external-jobs', label: 'External Jobs', icon: LinkIcon },
     { to: '/provider/track-workers', label: 'Track Workers', icon: Locate },
     { to: '/provider/job-history', label: 'Job History', icon: History },
@@ -118,7 +119,16 @@ const insuranceNav = [
   ]},
 ];
 
-const roleNav = { customer: clientNav, provider: providerNav, property: propertyNav, insurance: insuranceNav, landlord: landlordNav, facilities: facilitiesNav };
+const workerNav = [
+  { section: 'Work', items: [
+    { to: '/worker/jobs', label: 'My Jobs', icon: ClipboardList },
+    { to: '/team/board', label: 'Team Board', icon: MessagesSquare },
+    { to: '/messages', label: 'Messages', icon: MessageSquare },
+    { to: '/profile', label: 'Profile', icon: User },
+  ]},
+];
+
+const roleNav = { worker: workerNav, customer: clientNav, provider: providerNav, property: propertyNav, insurance: insuranceNav, landlord: landlordNav, facilities: facilitiesNav };
 
 const roles = [
   { id: 'customer', label: 'Customer', icon: UserIcon, color: 'bg-blue-500' },
@@ -168,7 +178,7 @@ export default function Sidebar({ collapsed, setCollapsed, embedded = false, onN
         ))}
       </nav>
 
-      <SidebarFooter collapsed={collapsed} roles={roles} />
+      <SidebarFooter collapsed={collapsed} roles={user?.role === 'worker' ? null : roles} />
     </aside>
   );
 }

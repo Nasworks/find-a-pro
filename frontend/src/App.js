@@ -55,12 +55,19 @@ import LegalPrivacy from './pages/shared/LegalPrivacy';
 import ReportProvider from './pages/shared/ReportProvider';
 import MyDisputes from './pages/shared/MyDisputes';
 import MoreMenu from './pages/shared/MoreMenu';
+import TeamBoard from './pages/shared/TeamBoard';
+import WorkerJobs from './pages/worker/WorkerJobs';
+import JoinTeam from './pages/JoinTeam';
+
+const WORKER_PATHS = ['/worker/', '/team/board', '/messages', '/profile', '/payment/'];
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
+  const { pathname } = useLocation();
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
   if (!user) return <Navigate to="/" replace />;
   if (user.signup_complete === false && !window.location.hash.includes('session_id=')) return <Navigate to="/signup" replace />;
+  if (user.role === 'worker' && !WORKER_PATHS.some((p) => pathname.startsWith(p))) return <Navigate to="/worker/jobs" replace />;
   return children;
 }
 
@@ -69,6 +76,7 @@ function RootRoute() {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
   if (user) {
     if (user.role === 'provider') return <Navigate to="/provider/dashboard" replace />;
+    if (user.role === 'worker') return <Navigate to="/worker/jobs" replace />;
     if (user.role === 'property') return <Navigate to="/property/dashboard" replace />;
     if (user.role === 'landlord') return <Navigate to="/landlord/dashboard" replace />;
     if (user.role === 'facilities') return <Navigate to="/facilities/dashboard" replace />;
@@ -88,6 +96,7 @@ function AppRouter() {
       <Route path="/" element={<RootRoute />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/join/:token" element={<JoinTeam />} />
 
       <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
         {/* Client routes */}
@@ -117,6 +126,8 @@ function AppRouter() {
         <Route path="/provider/job-history" element={<JobHistory />} />
         <Route path="/provider/referrals" element={<Referrals />} />
         <Route path="/provider/timesheet" element={<Timesheet />} />
+        <Route path="/team/board" element={<TeamBoard />} />
+        <Route path="/worker/jobs" element={<WorkerJobs />} />
 
         {/* Property */}
         <Route path="/property/dashboard" element={<PropertyDashboard />} />

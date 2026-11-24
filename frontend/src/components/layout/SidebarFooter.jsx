@@ -23,7 +23,7 @@ export default function SidebarFooter({ collapsed, roles }) {
 
   return (
     <div className="border-t border-border p-2 space-y-1">
-      <SwitchRoleDialog collapsed={collapsed} roles={roles} />
+      {roles && <SwitchRoleDialog collapsed={collapsed} roles={roles} />}
 
       <button
         onClick={toggleTheme}

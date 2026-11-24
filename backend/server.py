@@ -226,13 +226,15 @@ class Message(BaseModel):
     thread_id: str
     sender_id: str
     content: str
+    attachments: List[str] = []
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     read: bool = False
 
 
 class MessageCreate(BaseModel):
     thread_id: str
-    content: str
+    content: str = ""
+    attachments: List[str] = []
 
 
 class Thread(BaseModel):
@@ -530,6 +532,16 @@ async def demo_login(request: Request, response: Response):
     """One-click login as a seeded demo account for a given role. Preview-only convenience."""
     body = await request.json()
     role = (body.get("role") or "").strip().lower()
+    if role == "worker":
+        from team_routes import ensure_demo_worker
+        w = await ensure_demo_worker()
+        if not w:
+            raise HTTPException(status_code=500, detail="Demo company not ready")
+        token = create_jwt(w["user_id"])
+        set_auth_cookie(response, token)
+        w.pop("_id", None)
+        w.pop("password_hash", None)
+        return {"user": w, "token": token, "demo": True}
     if role not in DEMO_ROLES:
         raise HTTPException(status_code=400, detail=f"Unknown demo role. Use one of {DEMO_ROLES}")
     user = await db.users.find_one({"email": DEMO_EMAIL[role]})
@@ -880,6 +892,8 @@ async def logout(response: Response, session_token: Optional[str] = Cookie(defau
 async def switch_role(request: Request, user=Depends(require_user)):
     body = await request.json()
     role = body.get("role")
+    if user.get("role") == "worker":
+        raise HTTPException(status_code=403, detail="Employee logins can't switch account type")
     if role not in ["customer", "provider", "property", "insurance", "landlord", "facilities"]:
         raise HTTPException(status_code=400, detail="Invalid role")
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"role": role}})
@@ -1317,10 +1331,15 @@ async def send_message(payload: MessageCreate, user=Depends(require_user)):
     thread = await db.threads.find_one({"thread_id": payload.thread_id}, {"_id": 0})
     if not thread or user["user_id"] not in thread["participants"]:
         raise HTTPException(status_code=403, detail="Not allowed")
-    msg = Message(thread_id=payload.thread_id, sender_id=user["user_id"], content=payload.content)
+    content = (payload.content or "").strip()
+    atts = [u for u in payload.attachments if isinstance(u, str) and u.startswith("/api/files/")][:10]
+    if not content and not atts:
+        raise HTTPException(status_code=400, detail="Write a message or attach a photo or video")
+    msg = Message(thread_id=payload.thread_id, sender_id=user["user_id"], content=content, attachments=atts)
     msg_dict = msg.dict()
     await db.messages.insert_one(msg_dict)
-    await db.threads.update_one({"thread_id": payload.thread_id}, {"$set": {"last_message": payload.content, "last_message_at": msg.timestamp}})
+    preview = content or ("Sent a video" if any(a.lower().endswith((".mp4", ".mov", ".webm", ".m4v", ".3gp")) for a in atts) else "Sent a photo")
+    await db.threads.update_one({"thread_id": payload.thread_id}, {"$set": {"last_message": preview, "last_message_at": msg.timestamp}})
     msg_dict.pop("_id", None)
     return msg_dict
 
@@ -1988,6 +2007,8 @@ class TeamMember(BaseModel):
 
 @api.post("/team")
 async def add_team_member(payload: Dict[str, Any], user=Depends(require_user)):
+    if user["role"] != "provider":
+        raise HTTPException(status_code=403, detail="Only the company account can add team members")
     m = TeamMember(owner_id=user["user_id"], **{k: v for k, v in payload.items() if k in ["name", "role", "phone", "email", "hourly_rate", "skills"]})
     await db.team_members.insert_one(m.dict())
     return m
@@ -2385,7 +2406,7 @@ async def _compute_invoice(job: Dict[str, Any], provider_id: Optional[str]) -> D
     ).sort("started_at", 1).to_list(1000)
     lines: List[Dict[str, Any]] = []
     if bid:
-        lines.append({"kind": "quote", "description": f"Agreed quote — {bid.get('provider_name') or 'provider'}", "quantity": 1, "unit": "fixed", "rate": float(bid["amount"]), "amount": round(float(bid["amount"]), 2)})
+        lines.append({"key": "quote", "kind": "quote", "description": f"Agreed quote — {bid.get('provider_name') or 'provider'}", "quantity": 1, "unit": "fixed", "rate": float(bid["amount"]), "amount": round(float(bid["amount"]), 2)})
     groups: Dict[tuple, Dict[str, Any]] = {}
     fuel_total = 0.0
     fuel_km = 0.0
@@ -2399,20 +2420,23 @@ async def _compute_invoice(job: Dict[str, Any], provider_id: Optional[str]) -> D
         fuel_total += float(e.get("fuel_cost") or 0)
         fuel_km += float(e.get("fuel_km") or 0)
     for (t, worker, rate), g in groups.items():
-        lines.append({"kind": t, "description": f"{TYPE_LINE_LABEL.get(t, t.title())} — {worker}", "quantity": round(g["minutes"] / 60.0, 2), "unit": "hours", "rate": rate, "amount": round(g["amount"], 2)})
+        lines.append({"key": f"{t}|{worker}|{rate}", "kind": t, "description": f"{TYPE_LINE_LABEL.get(t, t.title())} — {worker}", "quantity": round(g["minutes"] / 60.0, 2), "unit": "hours", "rate": rate, "amount": round(g["amount"], 2)})
     if fuel_total:
-        lines.append({"kind": "fuel", "description": f"Fuel / vehicle{f' ({round(fuel_km, 1)} km)' if fuel_km else ''}", "quantity": 1, "unit": "fixed", "rate": round(fuel_total, 2), "amount": round(fuel_total, 2)})
+        lines.append({"key": "fuel", "kind": "fuel", "description": f"Fuel / vehicle{f' ({round(fuel_km, 1)} km)' if fuel_km else ''}", "quantity": 1, "unit": "fixed", "rate": round(fuel_total, 2), "amount": round(fuel_total, 2)})
     # Receipts the provider attached to this job (materials, hire, third-party…) — billed ex-GST, GST added below
     for r in await db.receipts.find({"job_id": job_id, "provider_id": provider_id}, {"_id": 0}).sort("created_at", 1).to_list(200):
         ex = round(r["total"] - r["gst"], 2) if r.get("gst") is not None else round(r["total"] / (1 + GST_RATE), 2)
         name = {"materials": "Materials", "equipment_purchase": "Equipment purchase", "equipment_hire": "Equipment hire",
                 "third_party": "Third-party service", "travel": "Travel", "fuel": "Fuel"}.get(r["cost_type"], "Expense")
-        lines.append({"kind": f"receipt_{r['cost_type']}", "description": f"{name} — {r.get('supplier') or 'receipt'}", "quantity": 1,
+        lines.append({"key": f"receipt|{r['receipt_id']}", "kind": f"receipt_{r['cost_type']}", "description": f"{name} — {r.get('supplier') or 'receipt'}", "quantity": 1,
                       "unit": "receipt", "rate": ex, "amount": ex, "receipt_id": r["receipt_id"]})
+    edits = await db.invoice_edits.find_one({"job_id": job_id, "provider_id": provider_id}, {"_id": 0}) or {}
+    lines = _apply_invoice_edits(lines, edits)
     subtotal = round(sum(line["amount"] for line in lines), 2)
     gst = round(subtotal * GST_RATE, 2)
     return {
         "job_id": job_id,
+        "edits": {"hours": edits.get("hours", {}), "removed": edits.get("removed", []), "extra": edits.get("extra", [])},
         "job_title": job.get("title"),
         "job_status": job.get("status"),
         "provider_id": provider_id,
@@ -2424,6 +2448,68 @@ async def _compute_invoice(job: Dict[str, Any], provider_id: Optional[str]) -> D
         "gst": gst,
         "total": round(subtotal + gst, 2),
     }
+
+
+INVOICE_EXTRA_KINDS = {"labour": "Labour", "travel": "Travel", "fuel": "Fuel", "materials": "Materials",
+                       "hire": "Equipment hire", "third_party": "Third-party service", "other": "Other"}
+
+
+def _apply_invoice_edits(lines: List[Dict[str, Any]], edits: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Provider's manual changes: hour overrides, removed auto lines, extra lines."""
+    hours, removed = edits.get("hours") or {}, set(edits.get("removed") or [])
+    out = []
+    for line in lines:
+        if line["key"] in removed:
+            continue
+        if line["unit"] == "hours" and line["key"] in hours:
+            h = float(hours[line["key"]])
+            line = {**line, "auto_quantity": line["quantity"], "quantity": h, "amount": round(h * line["rate"], 2), "edited": True}
+        out.append(line)
+    for x in edits.get("extra") or []:
+        out.append({"key": f"extra|{x['line_id']}", "kind": f"extra_{x['kind']}", "description": f"{INVOICE_EXTRA_KINDS.get(x['kind'], 'Other')} — {x['description']}",
+                    "quantity": x["quantity"], "unit": x.get("unit") or "item", "rate": x["rate"],
+                    "amount": round(x["quantity"] * x["rate"], 2), "manual": True, "line_id": x["line_id"]})
+    return out
+
+
+class InvoiceExtraLine(BaseModel):
+    line_id: Optional[str] = None
+    kind: str
+    description: str
+    quantity: float = 1
+    rate: float
+    unit: Optional[str] = None
+
+
+class InvoiceEditsIn(BaseModel):
+    hours: Dict[str, float] = {}
+    removed: List[str] = []
+    extra: List[InvoiceExtraLine] = []
+
+
+@api.put("/jobs/{job_id}/invoice/edits")
+async def save_invoice_edits(job_id: str, payload: InvoiceEditsIn, user=Depends(require_user)):
+    job, provider_id = await _invoice_context(job_id, user)
+    if user["user_id"] != provider_id:
+        raise HTTPException(status_code=403, detail="Only the job's provider can edit the invoice")
+    if await db.payment_transactions.find_one({"job_id": job_id, "payment_status": "paid"}):
+        raise HTTPException(status_code=400, detail="This invoice has already been paid")
+    if any(h < 0 or h > 1000 for h in payload.hours.values()):
+        raise HTTPException(status_code=400, detail="Hours must be between 0 and 1000")
+    extra = []
+    for x in payload.extra[:50]:
+        if x.kind not in INVOICE_EXTRA_KINDS:
+            raise HTTPException(status_code=400, detail="Unknown cost type")
+        if not x.description.strip() or x.quantity <= 0 or x.quantity > 10000 or x.rate < 0 or x.rate > 1000000:
+            raise HTTPException(status_code=400, detail="Each extra line needs a description, a quantity above 0 and a price of 0 or more")
+        extra.append({"line_id": x.line_id or uuid.uuid4().hex[:8], "kind": x.kind, "description": x.description.strip()[:200],
+                      "quantity": round(x.quantity, 2), "rate": round(x.rate, 2), "unit": (x.unit or "item")[:20]})
+    await db.invoice_edits.update_one({"job_id": job_id, "provider_id": provider_id},
+                                      {"$set": {"hours": {k: round(v, 2) for k, v in payload.hours.items()}, "removed": payload.removed[:200],
+                                                "extra": extra, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    inv = await _compute_invoice(job, provider_id)
+    sent = await db.invoices.find_one({"job_id": job_id}, {"_id": 0})
+    return {**inv, "is_sent_copy": False, "sent": _sent_meta(sent) if sent else None, "payment_status": (sent or {}).get("payment_status", "unpaid")}
 
 
 def _invoice_email_html(inv: Dict[str, Any], client_name: str, provider_name: str, app_url: str) -> str:
@@ -2458,6 +2544,7 @@ async def send_job_invoice(job_id: str, request: Request, user=Depends(require_u
     if user["user_id"] != provider_id:
         raise HTTPException(status_code=403, detail="Only the job's provider can send the invoice")
     inv = await _compute_invoice(job, provider_id)
+    inv.pop("edits", None)
     if not inv["lines"]:
         raise HTTPException(status_code=400, detail="Nothing to invoice yet")
     prev = await db.invoices.find_one({"job_id": job_id}, {"_id": 0, "version": 1, "invoice_id": 1})
@@ -4187,6 +4274,34 @@ async def _mark_paid(session_id: str):
                      f"{(job or {}).get('title', '')} (after 5% platform fee)", f"/jobs/{job_id}")
 
 
+@api.get("/payouts/statement")
+async def payout_statement(month: Optional[str] = None, user=Depends(require_user)):
+    """Monthly statement of paid jobs, platform fees and payouts for the provider."""
+    if user["role"] != "provider":
+        raise HTTPException(status_code=403, detail="Provider role required")
+    q = {"provider_id": user["user_id"], "payment_status": "paid", "duplicate_of": {"$exists": False}}
+    txs = await db.payment_transactions.find(q, {"_id": 0}).sort("updated_at", -1).to_list(5000)
+    months = sorted({t["updated_at"].strftime("%Y-%m") for t in txs}, reverse=True)
+    month = month or (months[0] if months else datetime.now(timezone.utc).strftime("%Y-%m"))
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="month must look like 2026-06")
+    rows = []
+    for t in (x for x in txs if x["updated_at"].strftime("%Y-%m") == month):
+        job = await db.jobs.find_one({"job_id": t["job_id"]}, {"_id": 0, "title": 1, "client_id": 1})
+        client = await db.users.find_one({"user_id": (job or {}).get("client_id")}, {"_id": 0, "name": 1}) if job else None
+        f = t["fees"]
+        rows.append({"paid_at": t["updated_at"].isoformat(), "job_id": t["job_id"], "job_title": (job or {}).get("title") or "Job",
+                     "client_name": (client or {}).get("name") or "Client", "invoice_version": t.get("invoice_version"),
+                     "invoice_total": f["invoice_total"], "platform_fee": f["provider_platform_fee"], "payout": f["provider_payout"]})
+    tot = lambda k: round(sum(r[k] for r in rows), 2)  # noqa: E731
+    prof = await db.provider_profiles.find_one({"user_id": user["user_id"]}, {"_id": 0, "business_name": 1}) or {}
+    return {"month": month, "months": months, "business_name": prof.get("business_name") or user.get("name"),
+            "rows": rows, "jobs": len(rows), "invoice_total": tot("invoice_total"), "platform_fee": tot("platform_fee"),
+            "payout": tot("payout"), "fee_rate": PLATFORM_FEE_PROVIDER}
+
+
 @api.get("/payments/status/{session_id}")
 async def payment_status(session_id: str, request: Request):
     tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
@@ -4840,6 +4955,11 @@ async def on_startup():
     await db.job_matches.create_index([("job_id", 1), ("provider_id", 1)], unique=True)
     await db.provider_specializations.create_index([("service_type", 1), ("category_id", 1), ("subcategory_id", 1)])
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
+    await db.team_invites.create_index("token", unique=True)
+    await db.team_assignments.create_index([("owner_id", 1), ("member_id", 1), ("created_at", -1)])
+    await db.team_posts.create_index([("owner_id", 1), ("created_at", -1)])
+    from team_routes import ensure_demo_worker
+    await ensure_demo_worker()
     logging.info("Pro Finder NZ startup complete")
 
 
@@ -4848,6 +4968,8 @@ async def on_shutdown():
     client.close()
 
 
+from team_routes import router as team_router  # noqa: E402
+api.include_router(team_router)
 app.include_router(api)
 
 app.add_middleware(

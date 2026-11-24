@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, Search, MessageSquare, ChevronLeft } from 'lucide-react';
-import { Button } from '../../components/ui/button';
+import { Search, MessageSquare, ChevronLeft } from 'lucide-react';
+import { ChatComposer, AttachmentGrid } from '../../components/ChatComposer';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -9,7 +9,6 @@ export default function Messages() {
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState([]);
-  const [text, setText] = useState('');
   const { user } = useAuth();
   const scrollRef = useRef(null);
 
@@ -28,10 +27,8 @@ export default function Messages() {
   useEffect(() => { loadThreads(); }, []);
   useEffect(() => { if (selected) loadMessages(selected.thread_id); }, [selected?.thread_id]);
 
-  const send = async () => {
-    if (!text.trim() || !selected) return;
-    await api.post('/messages', { thread_id: selected.thread_id, content: text });
-    setText('');
+  const send = async (content, attachments) => {
+    await api.post('/messages', { thread_id: selected.thread_id, content, attachments });
     loadMessages(selected.thread_id);
     loadThreads();
   };
@@ -97,17 +94,15 @@ export default function Messages() {
                   return (
                     <div key={m.message_id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[80%] md:max-w-[70%] px-3 py-2 rounded-2xl text-sm break-words ${mine ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-card border border-border text-foreground rounded-bl-sm'}`}>
-                        <div>{m.content}</div>
+                        <AttachmentGrid urls={m.attachments || []} />
+                        {m.content && <div>{m.content}</div>}
                         <div className={`text-[10px] mt-1 ${mine ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                       </div>
                     </div>
                   );
                 })}
               </div>
-              <div className="border-t border-border p-3 flex gap-2">
-                <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} placeholder="Type a message..." className="flex-1 px-4 py-2 rounded-full bg-muted/40 border border-transparent focus:border-primary/40 focus:bg-background outline-none text-sm transition-all" />
-                <Button onClick={send} disabled={!text.trim()} size="icon" className="rounded-full"><Send className="w-4 h-4" /></Button>
-              </div>
+              <ChatComposer onSend={send} testid="messages" />
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">Select a conversation</div>
