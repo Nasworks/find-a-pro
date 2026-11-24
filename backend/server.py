@@ -77,6 +77,9 @@ class JobPost(BaseModel):
     mode: str = "quotes"
     status: str = "open"  # open, in_progress, done, cancelled
     photos: List[str] = []
+    property_id: Optional[str] = None
+    location_lat: Optional[float] = None
+    location_lng: Optional[float] = None
     # ---- Tenant → Manager approval workflow (2026-02-07) ----
     tenancy_id: Optional[str] = None            # set when tenant posts on behalf of a linked tenancy
     tenant_id: Optional[str] = None             # duplicate of client_id, but explicit
@@ -101,6 +104,9 @@ class JobCreate(BaseModel):
     urgency: str = "flexible"
     mode: str = "quotes"
     photos: List[str] = []
+    property_id: Optional[str] = None
+    location_lat: Optional[float] = None
+    location_lng: Optional[float] = None
     # Tenant flow: opt-in to route through the manager
     tenancy_id: Optional[str] = None
     route_via_manager: bool = False  # if True and user has active tenancy, will require manager approval
@@ -290,9 +296,15 @@ class Property(BaseModel):
     property_id: str = Field(default_factory=lambda: f"prop_{uuid.uuid4().hex[:10]}")
     owner_id: str
     address: str
+    name: Optional[str] = None              # e.g. "Home", "Rental – Ponsonby"
     property_type: str = "residential"
     size: Optional[str] = None
     bedrooms: Optional[int] = None
+    bathrooms: Optional[float] = None
+    access_notes: Optional[str] = None      # gate codes, pets, parking
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    is_primary: bool = False                # one main property per owner
     tenants: List[Dict[str, str]] = []
     jobs_count: int = 0
     total_spent: float = 0.0
@@ -301,9 +313,27 @@ class Property(BaseModel):
 
 class PropertyCreate(BaseModel):
     address: str
+    name: Optional[str] = None
     property_type: str = "residential"
     size: Optional[str] = None
     bedrooms: Optional[int] = None
+    bathrooms: Optional[float] = None
+    access_notes: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    is_primary: bool = False
+
+
+class PropertyUpdate(BaseModel):
+    address: Optional[str] = None
+    name: Optional[str] = None
+    property_type: Optional[str] = None
+    size: Optional[str] = None
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[float] = None
+    access_notes: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
 class ProviderProfile(BaseModel):
@@ -705,6 +735,14 @@ async def create_job(payload: JobCreate, user=Depends(require_user)):
         approval_status = "pending"
         billing_target = "approver"
     job_data = payload.dict(exclude={"route_via_manager", "tenancy_id"})
+    access_notes: Optional[str] = None
+    if payload.property_id:
+        prop = await db.properties.find_one({"property_id": payload.property_id, "owner_id": user["user_id"]})
+        if not prop:
+            raise HTTPException(status_code=400, detail="Property not found on your profile")
+        access_notes = prop.get("access_notes")
+        if prop.get("lat") is not None and job_data.get("location_lat") is None:
+            job_data["location_lat"], job_data["location_lng"] = prop.get("lat"), prop.get("lng")
     job = JobPost(
         client_id=user["user_id"],
         tenant_id=user["user_id"] if approval_status == "pending" else None,
@@ -714,8 +752,10 @@ async def create_job(payload: JobCreate, user=Depends(require_user)):
         billing_target=billing_target,
         **job_data,
     )
-    await db.jobs.insert_one(job.dict())
-    return job
+    doc = job.dict()
+    doc["access_notes"] = access_notes  # private: only shown to the client, approver and winning pro
+    await db.jobs.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
 
 
 @api.get("/jobs/mine")
@@ -755,7 +795,7 @@ async def job_board(category: Optional[str] = None, user=Depends(require_user)):
     }
     if category:
         q["category"] = category
-    jobs = await db.jobs.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
+    jobs = await db.jobs.find(q, {"_id": 0, "access_notes": 0}).sort("created_at", -1).to_list(200)
     return jobs
 
 
@@ -764,7 +804,11 @@ async def get_job(job_id: str, user=Depends(require_user)):
     job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0})
     if not job:
         raise HTTPException(status_code=404, detail="Not found")
-    bids = await db.bids.find({"job_id": job_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    bids = await db.bids.find({"job_id": job_id}, {"_id": 0}).sort("created_at", -1).to_list(None)
+    can_see_access = user["user_id"] in (job.get("client_id"), job.get("approver_id")) or any(
+        b.get("provider_id") == user["user_id"] and b.get("status") == "accepted" for b in bids)
+    if not can_see_access:
+        job.pop("access_notes", None)
     return {"job": job, "bids": bids}
 
 
@@ -1137,17 +1181,59 @@ async def like_post(post_id: str, user=Depends(require_user)):
 
 
 # ---------------- PROPERTIES ----------------
+def _validate_property_fields(data: Dict[str, Any]):
+    if "property_type" in data and data["property_type"] not in ("residential", "commercial"):
+        raise HTTPException(status_code=400, detail="property_type must be 'residential' or 'commercial'")
+    if "address" in data and not (data["address"] or "").strip():
+        raise HTTPException(status_code=400, detail="Address is required")
+    for k in ("bedrooms", "bathrooms"):
+        if data.get(k) is not None and (data[k] < 0 or data[k] > 100):
+            raise HTTPException(status_code=400, detail=f"{k} must be between 0 and 100")
+
+
 @api.post("/properties")
 async def create_property(payload: PropertyCreate, user=Depends(require_user)):
-    prop = Property(owner_id=user["user_id"], **payload.dict())
+    data = payload.dict()
+    _validate_property_fields(data)
+    data["address"] = data["address"].strip()
+    has_any = await db.properties.count_documents({"owner_id": user["user_id"]})
+    if not has_any:
+        data["is_primary"] = True  # first property is the main one
+    elif data.get("is_primary"):
+        await db.properties.update_many({"owner_id": user["user_id"]}, {"$set": {"is_primary": False}})
+    prop = Property(owner_id=user["user_id"], **data)
     await db.properties.insert_one(prop.dict())
     return prop
 
 
 @api.get("/properties/mine")
 async def my_properties(user=Depends(require_user)):
-    props = await db.properties.find({"owner_id": user["user_id"]}, {"_id": 0}).to_list(200)
+    props = await db.properties.find({"owner_id": user["user_id"]}, {"_id": 0}).sort([("is_primary", -1), ("created_at", 1)]).to_list(500)
     return props
+
+
+@api.patch("/properties/{property_id}")
+async def update_property(property_id: str, payload: PropertyUpdate, user=Depends(require_user)):
+    p = await db.properties.find_one({"property_id": property_id})
+    if not p or p["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Property not found")
+    data = payload.dict(exclude_unset=True)
+    _validate_property_fields(data)
+    if "address" in data:
+        data["address"] = data["address"].strip()
+    if data:
+        await db.properties.update_one({"property_id": property_id}, {"$set": data})
+    return await db.properties.find_one({"property_id": property_id}, {"_id": 0})
+
+
+@api.post("/properties/{property_id}/primary")
+async def make_primary_property(property_id: str, user=Depends(require_user)):
+    p = await db.properties.find_one({"property_id": property_id})
+    if not p or p["owner_id"] != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Property not found")
+    await db.properties.update_many({"owner_id": user["user_id"]}, {"$set": {"is_primary": False}})
+    await db.properties.update_one({"property_id": property_id}, {"$set": {"is_primary": True}})
+    return {"ok": True}
 
 
 @api.delete("/properties/{property_id}")
@@ -1156,7 +1242,106 @@ async def delete_property(property_id: str, user=Depends(require_user)):
     if not p or p["owner_id"] != user["user_id"]:
         raise HTTPException(status_code=403, detail="Not allowed")
     await db.properties.delete_one({"property_id": property_id})
+    if p.get("is_primary"):
+        nxt = await db.properties.find_one({"owner_id": user["user_id"]}, sort=[("created_at", 1)])
+        if nxt:
+            await db.properties.update_one({"property_id": nxt["property_id"]}, {"$set": {"is_primary": True}})
     return {"ok": True}
+
+
+# ---------------- ADDRESS SEARCH ----------------
+# Google Places (New) when GOOGLE_MAPS_API_KEY is set, otherwise free OpenStreetMap (Photon) search.
+NZ_BBOX = "166.0,-47.5,179.0,-34.0"
+OSM_UA = {"User-Agent": "ProFinderNZ/1.0 (address search)"}
+
+
+def _google_key() -> str:
+    return (os.environ.get("GOOGLE_MAPS_API_KEY") or "").strip()
+
+
+def _photon_label(p: Dict[str, Any]) -> Dict[str, str]:
+    street = " ".join(x for x in [p.get("housenumber"), p.get("street")] if x)
+    main = street or p.get("name") or ""
+    if p.get("name") and street and p.get("name") != street:
+        main = f"{street}"
+    area = [p.get("locality") or p.get("district"), p.get("city") or p.get("county"), p.get("postcode")]
+    secondary = ", ".join(dict.fromkeys(x for x in area if x and x != main))
+    return {"main": main or secondary, "secondary": secondary}
+
+
+async def _photon_search(q: str) -> List[Dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=6.0) as client:
+        r = await client.get("https://photon.komoot.io/api/", params={"q": q, "limit": 8, "bbox": NZ_BBOX, "lang": "en"}, headers=OSM_UA)
+        r.raise_for_status()
+        feats = r.json().get("features", [])
+    out, seen = [], set()
+    for f in feats:
+        p = f.get("properties", {})
+        if (p.get("countrycode") or "").upper() != "NZ":
+            continue
+        lbl = _photon_label(p)
+        full = ", ".join(x for x in [lbl["main"], lbl["secondary"]] if x)
+        if not full or full in seen:
+            continue
+        seen.add(full)
+        lng, lat = (f.get("geometry", {}).get("coordinates") or [None, None])[:2]
+        out.append({"id": f"osm:{p.get('osm_type')}{p.get('osm_id')}", "main": lbl["main"], "secondary": lbl["secondary"],
+                    "address": full, "lat": lat, "lng": lng})
+    return out[:6]
+
+
+async def _google_search(q: str, session: Optional[str]) -> List[Dict[str, Any]]:
+    body: Dict[str, Any] = {"input": q, "includedRegionCodes": ["nz"], "languageCode": "en"}
+    if session:
+        body["sessionToken"] = session
+    async with httpx.AsyncClient(timeout=6.0) as client:
+        r = await client.post("https://places.googleapis.com/v1/places:autocomplete", json=body,
+                              headers={"X-Goog-Api-Key": _google_key(), "Content-Type": "application/json"})
+        r.raise_for_status()
+        sugg = r.json().get("suggestions", [])
+    out = []
+    for s_ in sugg:
+        pp = s_.get("placePrediction")
+        if not pp:
+            continue
+        sf = pp.get("structuredFormat", {})
+        out.append({"id": f"g:{pp.get('placeId')}", "main": sf.get("mainText", {}).get("text") or pp.get("text", {}).get("text", ""),
+                    "secondary": sf.get("secondaryText", {}).get("text", ""), "address": pp.get("text", {}).get("text", ""),
+                    "lat": None, "lng": None})
+    return out[:6]
+
+
+@api.get("/address/search")
+async def address_search(q: str, session: Optional[str] = None, user=Depends(require_user)):
+    q = (q or "").strip()
+    if len(q) < 3:
+        return {"source": "none", "results": []}
+    if _google_key():
+        try:
+            return {"source": "google", "results": await _google_search(q, session)}
+        except Exception as e:  # fall back to free search if Google fails
+            logging.warning(f"Google address search failed, falling back to OSM: {e}")
+    try:
+        return {"source": "osm", "results": await _photon_search(q)}
+    except Exception as e:
+        logging.warning(f"OSM address search failed: {e}")
+        return {"source": "error", "results": []}
+
+
+@api.get("/address/details")
+async def address_details(place_id: str, session: Optional[str] = None, user=Depends(require_user)):
+    """Resolve a Google place id to full address + coordinates (OSM results already include them)."""
+    if not place_id.startswith("g:") or not _google_key():
+        raise HTTPException(status_code=400, detail="Details are only needed for Google results")
+    params = {"sessionToken": session} if session else {}
+    async with httpx.AsyncClient(timeout=6.0) as client:
+        r = await client.get(f"https://places.googleapis.com/v1/places/{place_id[2:]}", params=params,
+                             headers={"X-Goog-Api-Key": _google_key(), "X-Goog-FieldMask": "formattedAddress,location"})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail="Could not look up that address")
+    d = r.json()
+    loc = d.get("location", {})
+    return {"address": d.get("formattedAddress"), "lat": loc.get("latitude"), "lng": loc.get("longitude")}
 
 
 # ---------------- PROVIDERS ----------------

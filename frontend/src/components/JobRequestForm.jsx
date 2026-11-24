@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import {
-  MapPin, Loader2, Home as HomeIcon, Building2, ChevronRight, Sparkles, Layers, KeyRound, ShieldCheck,
+  Loader2, Home as HomeIcon, Building2, ChevronRight, Sparkles, Layers, KeyRound, ShieldCheck,
   Pencil, Users, ClipboardList, Check, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 import { Button } from './ui/button';
@@ -15,6 +15,8 @@ import { Badge } from './ui/badge';
 import ServicePicker from './ServicePicker';
 import { useServiceDetect, DetectedAlternatives, providersLink } from './ServiceDetect';
 import { MediaUploader } from './MediaUploader';
+import JobLocationPicker from './JobLocationPicker';
+import { PROPERTY_ROLES } from './MyPropertiesCard';
 import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
 import { toast } from 'sonner';
@@ -74,6 +76,23 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
   const [routeViaManager, setRouteViaManager] = useState(true);
   const [findMode, setFindMode] = useState(''); // flow only: 'describe' | 'browse'
   const [detailsOpen, setDetailsOpen] = useState(false); // flow only: job details window
+  const [properties, setProperties] = useState([]);
+  const [loc, setLoc] = useState({ property_id: null, address: '', lat: null, lng: null, save: false, save_name: '' });
+  const canSaveProperties = PROPERTY_ROLES.has(user?.role);
+
+  useEffect(() => {
+    if (!canSaveProperties) return;
+    api.get('/properties/mine')
+      .then((r) => {
+        const list = r.data || [];
+        setProperties(list);
+        const main = list.find((p) => p.is_primary) || list[0];
+        setLoc((l) => (l.property_id || l.address ? l : main
+          ? { property_id: main.property_id, address: main.address, lat: main.lat, lng: main.lng, save: false, save_name: '' }
+          : { ...l, save: true }));
+      })
+      .catch(() => setProperties([]));
+  }, [canSaveProperties]);
 
   useEffect(() => {
     // Only tenants (customer role) should see the "route via manager" option
@@ -97,7 +116,6 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
     category_color: preset.category_color || '',
     subcategory: preset.subcategory || '',
     subcategory_name: preset.subcategory_name || '',
-    location: 'Auckland',
     budget_min: '',
     budget_max: '',
     urgency: 'flexible',
@@ -128,6 +146,14 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
     setForm((f) => ({ ...f, service_type: t, ...(variant ? serviceFields(variant) : EMPTY_SERVICE) }));
   };
 
+  const pickProperty = (p) => {
+    setLoc({ property_id: p.property_id, address: p.address, lat: p.lat, lng: p.lng, save: false, save_name: '' });
+    if (p.property_type && form.service_type && p.property_type !== form.service_type) {
+      changeServiceType(p.property_type);
+      toast.info(`Property type switched to ${p.property_type === 'commercial' ? 'Commercial' : 'Residential'} for ${p.name || 'this property'}`);
+    }
+  };
+
   const handleServicePicked = (sel) => {
     setManualPick(true);
     setAutoPicked(false);
@@ -152,8 +178,24 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
       toast.error('Please pick a service and enter a title');
       return;
     }
+    if (!loc.address.trim()) {
+      toast.error('Please choose a property or search an address');
+      return;
+    }
     setSaving(true);
     try {
+      let propertyId = loc.property_id;
+      if (!propertyId && loc.save && canSaveProperties) {
+        try {
+          const pr = await api.post('/properties', {
+            address: loc.address.trim(), name: (loc.save_name || '').trim() || null,
+            property_type: form.service_type || 'residential', lat: loc.lat, lng: loc.lng,
+          });
+          propertyId = pr.data.property_id;
+        } catch {
+          toast.error('Could not save the property — posting the job anyway');
+        }
+      }
       const shouldRoute = activeTenancies.length > 0 && routeViaManager;
       const payload = {
         title: form.title,
@@ -161,7 +203,10 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
         category: form.category,
         subcategory: form.subcategory || null,
         service_type: form.service_type,
-        location: form.location,
+        location: loc.address.trim(),
+        property_id: propertyId || null,
+        location_lat: loc.lat ?? null,
+        location_lng: loc.lng ?? null,
         budget_min: form.budget_min ? Number(form.budget_min) : null,
         budget_max: form.budget_max ? Number(form.budget_max) : null,
         urgency: form.urgency,
@@ -290,9 +335,8 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
 
       <div>
         <Label>Location</Label>
-        <div className="relative mt-1.5">
-          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input data-testid="post-job-location" value={form.location} onChange={(e) => update('location', e.target.value)} className="pl-9" />
+        <div className="mt-1.5">
+          <JobLocationPicker properties={properties} value={loc} onChange={setLoc} onPickProperty={pickProperty} />
         </div>
       </div>
 

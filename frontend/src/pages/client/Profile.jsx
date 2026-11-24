@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import api from '../../lib/api';
 import { ServiceAreaCard } from '../../components/ServiceAreaCard';
+import MyPropertiesCard, { PROPERTY_ROLES } from '../../components/MyPropertiesCard';
 import { useAuth } from '../../context/AuthContext';
 
 export default function Profile() {
@@ -91,6 +92,7 @@ export default function Profile() {
       {tab === 'overview' && (
         <div className="mt-6 space-y-6">
           {isProvider && <ServiceAreaCard />}
+          {PROPERTY_ROLES.has(user?.role) && <MyPropertiesCard />}
           <div>
             <div className="text-sm font-semibold text-foreground mb-3">Service Dashboard</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

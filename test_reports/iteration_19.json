@@ -1,0 +1,35 @@
+{
+  "summary": "Tested the 'Post Job only' booking flow end to end (backend and frontend). Everything requested works. Step 3 'Type of quotation' shows only booking-mode-post (Post Job, FREE, unlimited quotes & bids), and no Instant/3 Quotes/Bids option appears anywhere in the panel. Clicking it opens booking-details-panel, a second full-screen sheet. On desktop it measured 1920x1080. The panel shows the link-manager hint, the auto-detected service (Tap & Toilet Repairs), the prefilled title, and the description, photos, location, urgency and budget fields. The back arrow and Escape both close only the details panel and return to the options. Submitting sends POST /api/jobs with mode=bids and goes to /jobs/<id> with both panels and the overlay gone. The browse path goes to /find-providers?category=...&subcategory=.... The classic /post-job page has no offers selector and posts with mode=bids. Unlimited bids: 2 different providers placed 5 bids on one job, and one provider bid on 6 jobs, all 200. The customer job page shows all 3 UI-test bids (Bids (3), $150-$180, both provider names). At 390x844 and 768x1024 both panels fill the screen with no horizontal overflow. ServiceSearch: with the mouse parked over the suggestions list without moving, Enter on free text opens the panel with the typed text, so the hover bug is fixed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/bids", "issue": "No role or ownership check. The demo customer could bid on their own job (200). Any logged-in role can bid. Consider allowing only providers and blocking job.client_id == user_id. Also there is no check that the job is open, so bids are accepted on closed or awarded jobs."},
+      {"endpoint": "GET /api/jobs/{job_id}", "issue": "Bids are returned with to_list(100), so a job with more than 100 bids silently shows only the newest 100. This conflicts with 'no limits'. Paginate or raise the cap."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "GuideHelp FAQ (pages/shared/GuideHelp.jsx:6)", "issues": ["Old wording still says 'choose Instant / Quotes / Bids'. Update it to match the single Post Job flow."]},
+      {"screen": "Job detail", "issues": ["Category shows the slug 'Plumbing-Gas' instead of category_name 'Plumbing & Gas'. This was already the case before this change."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter19_post_job_unlimited_bids.py", "/app/test_reports/pytest/pytest_iter19.xml"],
+  "action_items": [
+    "Optional: on POST /api/bids, allow only provider roles, block self-bids by the job owner, and reject bids on jobs that are not open",
+    "Optional: remove the 100-bid cap in GET /api/jobs/{id} (to_list(100)) or paginate it",
+    "Update the GuideHelp FAQ copy that still mentions Instant / Quotes / Bids"
+  ],
+  "critical_code_review_comments": [
+    "JobRequestForm.jsx (484 lines) holds both flow mode and page mode plus a nested Sheet. Splitting FlowMode, PageMode and the shared fields into separate components would make it easier to maintain.",
+    "The Budget min/max inputs have no data-testid",
+    "The form state still carries mode: OPEN_MODE ('bids') even though it is constant. That is fine, but the backend could set the default itself so old clients can't post 'instant' or 'quotes'."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter19_post_job_unlimited_bids.py"],
+  "success_rate": {"backend": "100% (6/6 pytest)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Jobs: the pytest jobs (7) and the UI jobs job_acc08831d0 and job_57c0fa9c89 were all deleted by id, which also deletes their bids. Two TEST_ provider users were registered (TEST_Iter19 Provider, test_iter19_prov_*@example.com, and TEST_Iter19 UI Pro, user_1cc3e01c9dbf, test_iter19_ui_*@example.com). They could not be deleted because there is no user-delete API. Remove them manually if you want.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Log in with POST /api/auth/demo-login {role}. There is no /app/memory/test_credentials.md. Run pytest with -n0 when targeting one file, because pytest.ini adds xdist. Book flow: service-search-input -> service-search-book -> booking-type-residential -> booking-find-describe -> booking-mode-post -> booking-details-panel -> post-job-description -> post-job-submit. A second distinct provider can be made via POST /api/auth/register role=provider."
+}

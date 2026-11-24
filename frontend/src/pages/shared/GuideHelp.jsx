@@ -3,7 +3,7 @@ import { BookOpen, ChevronRight, MessageSquare, Phone, Mail } from 'lucide-react
 import { Button } from '../../components/ui/button';
 
 const faqs = [
-  { q: 'How do I post my first job?', a: 'Click Post a Job from the sidebar, describe what you need, choose Instant / Quotes / Bids, and providers are notified within minutes.' },
+  { q: 'How do I post my first job?', a: 'Type what you need into the search bar on Home and press Book. Pick your property type, choose Describe your job, then Post Job. Every matching pro can quote or bid, with no limit on replies.' },
   { q: 'How does escrow payment work?', a: 'When a bid is accepted, funds are held by Pro Finder NZ. Once you sign off the job, funds are released to the provider. If you dispute within 48h, we mediate.' },
   { q: 'Are providers verified?', a: 'All providers are ID-checked, insurance-verified and rated by past customers. Look for the shield badge on their profile.' },
   { q: 'What if the job goes wrong?', a: 'Every job includes a 12-month workmanship warranty minimum. File a Warranty Claim from your bookings and we\'ll mediate resolution in 5 business days.' },
