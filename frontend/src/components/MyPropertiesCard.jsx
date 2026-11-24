@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Plus, Home as HomeIcon, Building2, Star, Pencil, Trash2, BedDouble, Bath, KeyRound } from 'lucide-react';
+import { Plus, Home as HomeIcon, Star, Pencil, Trash2, BedDouble, Bath, KeyRound } from 'lucide-react';
 import { Button } from './ui/button';
-import { Badge } from './ui/badge';
 import PropertyFormDialog from './PropertyFormDialog';
 import api from '../lib/api';
 import { toast } from 'sonner';
@@ -31,8 +30,8 @@ export default function MyPropertiesCard() {
   const main = props.find((p) => p.is_primary);
   const others = props.filter((p) => !p.is_primary);
 
-  const Row = ({ p }) => {
-    const TypeIcon = p.property_type === 'commercial' ? Building2 : HomeIcon;
+  const renderRow = (p) => {
+    const TypeIcon = HomeIcon;
     return (
       <div className={`flex items-start gap-3 p-3.5 rounded-xl border ${p.is_primary ? 'border-primary/40 bg-primary/5' : 'border-border'}`} data-testid={`property-row-${p.property_id}`}>
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${p.is_primary ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
@@ -41,7 +40,6 @@ export default function MyPropertiesCard() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-foreground truncate">{p.name || (p.is_primary ? 'Main property' : 'Property')}</span>
-            <Badge variant="outline" className="text-[10px] capitalize">{p.property_type}</Badge>
           </div>
           <div className="text-sm text-muted-foreground truncate">{p.address}</div>
           <div className="flex flex-wrap gap-3 mt-1 text-xs text-muted-foreground">
@@ -79,13 +77,13 @@ export default function MyPropertiesCard() {
           {main && (
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1"><Star className="w-3 h-3 text-amber-500" /> Main property</div>
-              <Row p={main} />
+              {renderRow(main)}
             </div>
           )}
           {others.length > 0 && (
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Secondary properties</div>
-              <div className="space-y-2">{others.map((p) => <Row key={p.property_id} p={p} />)}</div>
+              <div className="space-y-2">{others.map((p) => <React.Fragment key={p.property_id}>{renderRow(p)}</React.Fragment>)}</div>
             </div>
           )}
         </div>

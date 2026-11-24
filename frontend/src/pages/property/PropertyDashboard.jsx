@@ -20,7 +20,7 @@ export default function PropertyDashboard() {
 
   const addProp = async () => {
     if (!form.address) return;
-    await api.post('/properties', { ...form, bedrooms: form.bedrooms ? Number(form.bedrooms) : null });
+    await api.post('/properties', { ...form, property_type: 'residential', bedrooms: form.bedrooms ? Number(form.bedrooms) : null });
     toast.success('Property added');
     setOpen(false);
     setForm({ address: '', property_type: 'residential', bedrooms: '', size: '' });
@@ -49,17 +49,6 @@ export default function PropertyDashboard() {
             <DialogHeader><DialogTitle>Add a property</DialogTitle></DialogHeader>
             <div className="space-y-3 mt-2">
               <div><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="e.g. 123 Queen St, Auckland" className="mt-1.5" /></div>
-              <div><Label>Type</Label>
-                <Select value={form.property_type} onValueChange={(v) => setForm({ ...form, property_type: v })}>
-                  <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="residential">Residential</SelectItem>
-                    <SelectItem value="commercial">Commercial</SelectItem>
-                    <SelectItem value="rental">Rental</SelectItem>
-                    <SelectItem value="mixed">Mixed use</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Bedrooms</Label><Input type="number" value={form.bedrooms} onChange={(e) => setForm({ ...form, bedrooms: e.target.value })} placeholder="3" className="mt-1.5" /></div>
                 <div><Label>Size</Label><Input value={form.size} onChange={(e) => setForm({ ...form, size: e.target.value })} placeholder="150 sqm" className="mt-1.5" /></div>

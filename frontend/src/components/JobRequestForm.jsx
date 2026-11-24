@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import {
-  Loader2, Home as HomeIcon, Building2, ChevronRight, Sparkles, Layers, KeyRound, ShieldCheck,
+  Loader2, ChevronRight, Sparkles, Layers, KeyRound, ShieldCheck,
   Pencil, Users, ClipboardList, Check, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 import { Button } from './ui/button';
@@ -21,12 +21,9 @@ import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
 import { toast } from 'sonner';
 
-// Roles that default to commercial when they hit Post-a-Job
-const COMMERCIAL_DEFAULT_ROLES = new Set(['facilities', 'property']);
+// Pro Finder NZ is residential-only.
+const SERVICE_TYPE = 'residential';
 
-const EMPTY_SERVICE = {
-  category: '', category_name: '', category_icon: '', category_color: '', subcategory: '', subcategory_name: '',
-};
 const serviceFields = (sel) => ({
   category: sel.category_id,
   category_name: sel.category_name,
@@ -102,20 +99,21 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
       .catch(() => setActiveTenancies([]));
   }, [user?.role]);
 
-  const initialServiceType = flow ? '' : (preset.propertyType
-    || preset.service_type
-    || (user?.role && COMMERCIAL_DEFAULT_ROLES.has(user.role) ? 'commercial' : 'residential'));
-
-  const [form, setForm] = useState({
-    title: preset.title || '',
-    description: preset.description || '',
-    service_type: initialServiceType,
+  // A service picked from the search bar arrives as preset.suggestion.residential
+  const presetService = preset.suggestion?.residential ? serviceFields(preset.suggestion.residential) : {
     category: preset.category || '',
     category_name: preset.category_name || '',
     category_icon: preset.category_icon || '',
     category_color: preset.category_color || '',
     subcategory: preset.subcategory || '',
     subcategory_name: preset.subcategory_name || '',
+  };
+
+  const [form, setForm] = useState({
+    title: preset.title || '',
+    description: preset.description || '',
+    service_type: SERVICE_TYPE,
+    ...presetService,
     budget_min: '',
     budget_max: '',
     urgency: 'flexible',
@@ -125,33 +123,20 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   // Auto-detect the service from title + description until the user picks one manually
-  const [manualPick, setManualPick] = useState(false);
+  const [manualPick, setManualPick] = useState(!!preset.suggestion?.residential);
   const [autoPicked, setAutoPicked] = useState(false);
-  const detected = useServiceDetect(form.service_type ? `${form.title} ${form.description}` : '', form.service_type);
+  const detected = useServiceDetect(`${form.title} ${form.description}`, SERVICE_TYPE);
   useEffect(() => {
     if (manualPick || !detected.match) return;
     if (form.category && !autoPicked) return; // keep a preset the user arrived with
     applyService(detected.match);
     setAutoPicked(true);
-  }, [detected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [detected]);
 
   const applyService = (sel) => setForm((f) => ({ ...f, ...serviceFields(sel) }));
 
-  const changeServiceType = (t) => {
-    if (t === form.service_type) return;
-    // A service picked from the search bar resolves to the matching entry in the chosen taxonomy
-    const variant = preset.suggestion?.[t];
-    setManualPick(!!variant);
-    setAutoPicked(false);
-    setForm((f) => ({ ...f, service_type: t, ...(variant ? serviceFields(variant) : EMPTY_SERVICE) }));
-  };
-
   const pickProperty = (p) => {
     setLoc({ property_id: p.property_id, address: p.address, lat: p.lat, lng: p.lng, save: false, save_name: '' });
-    if (p.property_type && form.service_type && p.property_type !== form.service_type) {
-      changeServiceType(p.property_type);
-      toast.info(`Property type switched to ${p.property_type === 'commercial' ? 'Commercial' : 'Residential'} for ${p.name || 'this property'}`);
-    }
   };
 
   const handleServicePicked = (sel) => {
@@ -189,7 +174,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
         try {
           const pr = await api.post('/properties', {
             address: loc.address.trim(), name: (loc.save_name || '').trim() || null,
-            property_type: form.service_type || 'residential', lat: loc.lat, lng: loc.lng,
+            property_type: SERVICE_TYPE, lat: loc.lat, lng: loc.lng,
           });
           propertyId = pr.data.property_id;
         } catch {
@@ -202,7 +187,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
         description: form.description,
         category: form.category,
         subcategory: form.subcategory || null,
-        service_type: form.service_type,
+        service_type: SERVICE_TYPE,
         location: loc.address.trim(),
         property_id: propertyId || null,
         location_lat: loc.lat ?? null,
@@ -229,7 +214,6 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
   };
 
   const CategoryIcon = form.category_icon && LucideIcons[form.category_icon] ? LucideIcons[form.category_icon] : Layers;
-  const serviceTypeLabel = form.service_type === 'commercial' ? 'Commercial' : 'Residential';
 
   const serviceCard = (
     <div>
@@ -258,7 +242,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
             </div>
             <div className="flex-1">
               <div className="text-sm font-semibold text-foreground">Choose a service</div>
-              <div className="text-xs text-muted-foreground">Browse {serviceTypeLabel} categories &amp; subcategories</div>
+              <div className="text-xs text-muted-foreground">Browse home service categories &amp; subcategories</div>
             </div>
             <ChevronRight className="w-4 h-4 text-muted-foreground" />
           </>
@@ -374,7 +358,6 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
     <ServicePicker
       open={pickerOpen}
       onOpenChange={setPickerOpen}
-      serviceType={form.service_type || 'residential'}
       value={form.category ? { category_id: form.category, subcategory_id: form.subcategory } : undefined}
       onSelect={handleServicePicked}
     />
@@ -384,25 +367,15 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
   if (flow) {
     return (
       <div className="space-y-8" data-testid="booking-flow">
-        <section>
-          <StepTitle n={1}>Property type</StepTitle>
-          <div className="grid grid-cols-2 gap-3">
-            <ChoiceCard testid="booking-type-residential" active={form.service_type === 'residential'} onClick={() => changeServiceType('residential')} icon={HomeIcon} title="Residential" desc="Homes, tenants, holiday rentals" />
-            <ChoiceCard testid="booking-type-commercial" active={form.service_type === 'commercial'} onClick={() => changeServiceType('commercial')} icon={Building2} title="Commercial" desc="Offices, retail, industrial, facilities" />
-          </div>
-        </section>
-
-        {form.service_type && (
-          <section className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <StepTitle n={2}>How do you want to find a pro?</StepTitle>
+          <section>
+            <StepTitle n={1}>How do you want to find a pro?</StepTitle>
             <div className="grid grid-cols-2 gap-3">
               <ChoiceCard testid="booking-find-describe" active={findMode === 'describe'} onClick={() => setFindMode('describe')} icon={Pencil} title="Describe your job" desc="Tell pros what's needed and get offers" />
               <ChoiceCard testid="booking-find-browse" active={findMode === 'browse'} onClick={() => setFindMode('browse')} icon={Users} title="Browse providers" desc="Pick a pro yourself from the directory" />
             </div>
           </section>
-        )}
 
-        {form.service_type && findMode === 'browse' && (
+        {findMode === 'browse' && (
           <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300" data-testid="booking-browse-section">
             {serviceCard}
             <Button type="button" onClick={browseProviders} data-testid="booking-browse-go" className="w-full h-12 text-base">
@@ -412,9 +385,9 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
           </section>
         )}
 
-        {form.service_type && findMode === 'describe' && (
+        {findMode === 'describe' && (
           <section className="animate-in fade-in slide-in-from-bottom-2 duration-300" data-testid="booking-quote-section">
-            <StepTitle n={3}>Type of quotation</StepTitle>
+            <StepTitle n={2}>Type of quotation</StepTitle>
             <button
               type="button"
               data-testid="booking-mode-post"
@@ -452,7 +425,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
               <div className="min-w-0">
                 <SheetTitle className="text-base font-semibold text-foreground leading-tight">Post a Job</SheetTitle>
                 <SheetDescription className="text-xs text-muted-foreground truncate">
-                  {serviceTypeLabel} · Unlimited quotes &amp; bids
+                  Home services · Unlimited quotes &amp; bids
                 </SheetDescription>
               </div>
             </div>
@@ -481,37 +454,6 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
     <>
       <form onSubmit={submit} className="mt-6 space-y-5 bg-card border border-border rounded-2xl p-6">
         {tenancyBlock}
-        {/* Service type toggle */}
-        <div>
-          <Label>Property type</Label>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              data-testid="post-job-service-type-residential"
-              onClick={() => changeServiceType('residential')}
-              className={`p-3 rounded-xl border-2 text-left transition-all ${form.service_type === 'residential' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}
-            >
-              <div className="flex items-center gap-2">
-                <HomeIcon className={`w-4 h-4 ${form.service_type === 'residential' ? 'text-primary' : 'text-muted-foreground'}`} />
-                <span className="text-sm font-semibold text-foreground">Residential</span>
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">Homes, tenants, holiday rentals</div>
-            </button>
-            <button
-              type="button"
-              data-testid="post-job-service-type-commercial"
-              onClick={() => changeServiceType('commercial')}
-              className={`p-3 rounded-xl border-2 text-left transition-all ${form.service_type === 'commercial' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}
-            >
-              <div className="flex items-center gap-2">
-                <Building2 className={`w-4 h-4 ${form.service_type === 'commercial' ? 'text-primary' : 'text-muted-foreground'}`} />
-                <span className="text-sm font-semibold text-foreground">Commercial</span>
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">Offices, retail, industrial, facilities</div>
-            </button>
-          </div>
-        </div>
-
         {serviceCard}
         {detailFields}
 

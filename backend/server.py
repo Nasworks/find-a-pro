@@ -69,7 +69,7 @@ class JobPost(BaseModel):
     description: str
     category: str
     subcategory: Optional[str] = None
-    service_type: str = "residential"  # residential | commercial
+    service_type: str = "residential"  # residential only
     location: str = "Auckland"
     budget_min: Optional[float] = None
     budget_max: Optional[float] = None
@@ -703,12 +703,12 @@ async def switch_role(request: Request, user=Depends(require_user)):
 @api.post("/jobs")
 async def create_job(payload: JobCreate, user=Depends(require_user)):
     # Validate service_type
-    if payload.service_type not in ("residential", "commercial"):
-        raise HTTPException(status_code=400, detail="service_type must be 'residential' or 'commercial'")
+    if payload.service_type != "residential":
+        raise HTTPException(status_code=400, detail="Only residential jobs can be posted")
     # Validate category (and subcategory if present) against the correct taxonomy —
     # but stay permissive with legacy short-form categories (from old /api/categories)
     # so we don't break older flows / bookmarks.
-    idx = COMMERCIAL_TAXONOMY_INDEX if payload.service_type == "commercial" else RESIDENTIAL_TAXONOMY_INDEX
+    idx = RESIDENTIAL_TAXONOMY_INDEX
     known_cats = {k.split("/")[0] for k in idx.keys()}
     if payload.subcategory:
         key = f"{payload.category}/{payload.subcategory}"
@@ -1185,8 +1185,8 @@ async def like_post(post_id: str, user=Depends(require_user)):
 
 # ---------------- PROPERTIES ----------------
 def _validate_property_fields(data: Dict[str, Any]):
-    if "property_type" in data and data["property_type"] not in ("residential", "commercial"):
-        raise HTTPException(status_code=400, detail="property_type must be 'residential' or 'commercial'")
+    if "property_type" in data and data["property_type"] != "residential":
+        raise HTTPException(status_code=400, detail="Only residential properties are supported")
     if "address" in data and not (data["address"] or "").strip():
         raise HTTPException(status_code=400, detail="Address is required")
     for k in ("bedrooms", "bathrooms"):
@@ -1381,13 +1381,13 @@ async def nearby_providers(category: Optional[str] = None):
 # Taxonomy category id -> older provider category slugs still stored on profiles
 CATEGORY_ALIASES: Dict[str, List[str]] = {
     "plumbing-gas": ["plumbing"],
-    "heating-cooling-ventilation": ["hvac"], "hvac-mechanical": ["hvac"],
-    "general-home-maintenance": ["handyman"], "building-maintenance": ["handyman"],
-    "painting-interior-finishes": ["painting"], "interior-finishes": ["painting"],
-    "roofing-guttering": ["roofing"], "roofing-waterproofing": ["roofing"],
-    "gardening-lawn": ["lawn", "gardening"], "grounds-maintenance": ["lawn", "gardening"],
-    "landscaping": ["lawn", "landscaping"], "commercial-landscaping": ["lawn", "landscaping"],
-    "cleaning": ["cleaning"], "commercial-cleaning": ["cleaning"],
+    "heating-cooling-ventilation": ["hvac"],
+    "general-home-maintenance": ["handyman"],
+    "painting-interior-finishes": ["painting"],
+    "roofing-guttering": ["roofing"],
+    "gardening-lawn": ["lawn", "gardening"],
+    "landscaping": ["lawn", "landscaping"],
+    "cleaning": ["cleaning"],
 }
 
 
@@ -2699,179 +2699,110 @@ async def reject_job(job_id: str, payload: JobApprovalAction, user=Depends(requi
     return {"ok": True}
 
 
-# ---------------- COMMERCIAL SERVICES TAXONOMY ----------------
+# ---------------- RESIDENTIAL SERVICES TAXONOMY (residential-only app) ----------------
 RESIDENTIAL_TAXONOMY = [
     {"id": "general-home-maintenance", "name": "General Home Maintenance", "icon": "Home", "color": "#3B82F6", "subs": [
-        "Handyman Services", "Home Repairs", "Property Maintenance",
-        "Preventative Maintenance", "Odd Jobs", "Home Improvements",
+        "Handyman Services", "Home Repairs", "Property Maintenance", "Preventative Maintenance", "Odd Jobs",
+        "Home Improvements",
     ]},
     {"id": "electrical", "name": "Electrical", "icon": "Zap", "color": "#F59E0B", "subs": [
-        "Residential Electrical", "New Wiring & Rewiring", "Lighting Installation",
-        "Power Points & Switches", "Switchboard Upgrades", "EV Charger Installation",
-        "Smoke Alarms", "Fault Finding & Repairs",
+        "Residential Electrical", "New Wiring & Rewiring", "Lighting Installation", "Power Points & Switches",
+        "Switchboard Upgrades", "EV Charger Installation", "Smoke Alarms", "Fault Finding & Repairs",
     ]},
     {"id": "plumbing-gas", "name": "Plumbing & Gas", "icon": "Droplets", "color": "#0EA5E9", "subs": [
-        "Residential Plumbing", "Blocked Drains", "Leak Repairs", "Hot Water Systems",
-        "Tap & Toilet Repairs", "Bathroom Plumbing", "Kitchen Plumbing", "Gas Fitting & Gas Appliances",
+        "Residential Plumbing", "Blocked Drains", "Leak Repairs", "Hot Water Systems", "Tap & Toilet Repairs",
+        "Bathroom Plumbing", "Kitchen Plumbing", "Gas Fitting & Gas Appliances",
     ]},
     {"id": "heating-cooling-ventilation", "name": "Heating, Cooling & Ventilation", "icon": "Wind", "color": "#06B6D4", "subs": [
-        "Heat Pump Installation", "Air Conditioning", "Home Ventilation Systems",
-        "Bathroom Extractor Fans", "Ducted Heating", "HVAC Servicing",
+        "Heat Pump Installation", "Air Conditioning", "Home Ventilation Systems", "Bathroom Extractor Fans",
+        "Ducted Heating", "HVAC Servicing",
     ]},
     {"id": "roofing-guttering", "name": "Roofing & Guttering", "icon": "Home", "color": "#EF4444", "subs": [
-        "Roof Repairs", "Roof Replacement", "Gutter Repairs", "Gutter Replacement",
-        "Downpipes", "Roof Leak Repairs", "Skylight Installation",
+        "Roof Repairs", "Roof Replacement", "Gutter Repairs", "Gutter Replacement", "Downpipes",
+        "Roof Leak Repairs", "Skylight Installation",
     ]},
     {"id": "carpentry-joinery", "name": "Carpentry & Joinery", "icon": "Hammer", "color": "#A16207", "subs": [
-        "General Carpentry", "Deck Construction", "Pergolas", "Fencing",
-        "Doors", "Windows", "Built-in Cabinets", "Kitchen Cabinetry",
+        "General Carpentry", "Deck Construction", "Pergolas", "Fencing", "Doors", "Windows", "Built-in Cabinets",
+        "Kitchen Cabinetry", "Gates",
     ]},
     {"id": "painting-interior-finishes", "name": "Painting & Interior Finishes", "icon": "Paintbrush", "color": "#EC4899", "subs": [
-        "Interior Painting", "Exterior Painting", "Gib Installation", "Gib Stopping",
-        "Plastering", "Wallpaper Installation", "Ceiling Repairs",
+        "Interior Painting", "Exterior Painting", "Gib Installation", "Gib Stopping", "Plastering",
+        "Wallpaper Installation", "Ceiling Repairs",
     ]},
     {"id": "flooring-tiling", "name": "Flooring & Tiling", "icon": "Grid3x3", "color": "#F97316", "subs": [
-        "Timber Flooring", "Laminate Flooring", "Vinyl Flooring", "Carpet Installation",
-        "Floor Repairs", "Floor & Wall Tiling", "Bathroom Tiling", "Kitchen Splashbacks",
+        "Timber Flooring", "Laminate Flooring", "Vinyl Flooring", "Carpet Installation", "Floor Repairs",
+        "Floor & Wall Tiling", "Bathroom Tiling", "Kitchen Splashbacks",
     ]},
     {"id": "kitchens-bathrooms-renovations", "name": "Kitchens, Bathrooms & Renovations", "icon": "Sparkles", "color": "#8B5CF6", "subs": [
-        "Kitchen Renovations", "Bathroom Renovations", "Laundry Renovations",
-        "Home Alterations", "Room Additions", "Home Extensions", "Interior Refurbishments",
+        "Kitchen Renovations", "Bathroom Renovations", "Laundry Renovations", "Home Alterations", "Room Additions",
+        "Home Extensions", "Interior Refurbishments", "Builders & Renovations",
     ]},
     {"id": "concrete-outdoor-construction", "name": "Concrete & Outdoor Construction", "icon": "Layers", "color": "#71717A", "subs": [
-        "Driveways", "Paths", "Concrete Slabs", "Retaining Walls",
-        "Paving", "Excavation", "Site Preparation",
+        "Driveways", "Paths", "Concrete Slabs", "Retaining Walls", "Paving", "Excavation", "Site Preparation",
+        "Bricklaying & Masonry",
     ]},
     {"id": "glass-windows", "name": "Glass & Windows", "icon": "Square", "color": "#0891B2", "subs": [
-        "Glass Replacement", "Double Glazing", "Window Installation",
-        "Shower Glass", "Mirrors", "Glass Balustrades",
+        "Glass Replacement", "Double Glazing", "Window Installation", "Shower Glass", "Mirrors",
+        "Glass Balustrades",
     ]},
     {"id": "security-smart-home", "name": "Security & Smart Home", "icon": "ShieldCheck", "color": "#7C3AED", "subs": [
-        "CCTV Installation", "Alarm Systems", "Smart Doorbells", "Smart Locks",
-        "Intercom Systems", "Access Control", "Home Automation",
+        "CCTV Installation", "Alarm Systems", "Smart Doorbells", "Smart Locks", "Intercom Systems",
+        "Access Control", "Home Automation", "Locksmith Services",
     ]},
-    {"id": "data-communications", "name": "Data & Communications", "icon": "Router", "color": "#2563EB", "subs": [
-        "Wi-Fi Installation", "Data Cabling", "Fibre Cabling",
-        "TV Wall Mounting", "Home Networking", "Audio & Visual Installation",
+    {"id": "data-communications", "name": "Home IT, Data & Communications", "icon": "Router", "color": "#2563EB", "subs": [
+        "Wi-Fi Installation", "Data Cabling", "Fibre Cabling", "TV Wall Mounting", "Home Networking",
+        "Audio & Visual Installation", "Home IT Support",
     ]},
     {"id": "solar-energy", "name": "Solar & Energy", "icon": "Sun", "color": "#10B981", "subs": [
-        "Solar Panel Installation", "Home Battery Installation", "EV Chargers",
-        "Energy Monitoring", "Backup Power Systems", "Solar Maintenance",
+        "Solar Panel Installation", "Home Battery Installation", "EV Chargers", "Energy Monitoring",
+        "Backup Power Systems", "Solar Maintenance",
     ]},
     {"id": "pools-spas-outdoor-living", "name": "Pools, Spas & Outdoor Living", "icon": "Waves", "color": "#0EA5E9", "subs": [
-        "Swimming Pool Installation", "Spa Pool Installation", "Pool Pumps & Filtration",
-        "Outdoor Kitchens", "Outdoor Lighting", "Shade Structures",
+        "Swimming Pool Installation", "Spa Pool Installation", "Pool Pumps & Filtration", "Outdoor Kitchens",
+        "Outdoor Lighting", "Shade Structures",
     ]},
     {"id": "insulation-weatherproofing", "name": "Insulation & Weatherproofing", "icon": "Thermometer", "color": "#65A30D", "subs": [
-        "Ceiling Insulation", "Underfloor Insulation", "Wall Insulation",
-        "Moisture Barriers", "Home Ventilation", "Weatherproofing",
+        "Ceiling Insulation", "Underfloor Insulation", "Wall Insulation", "Moisture Barriers", "Home Ventilation",
+        "Weatherproofing",
     ]},
-    {"id": "appliance-installation", "name": "Appliance Installation", "icon": "Refrigerator", "color": "#F59E0B", "subs": [
-        "Ovens & Cooktops", "Dishwashers", "Rangehoods", "Washing Machines",
-        "Dryers", "Waste Disposals", "Water Filters",
+    {"id": "appliance-installation", "name": "Appliance Installation & Repairs", "icon": "Refrigerator", "color": "#F59E0B", "subs": [
+        "Ovens & Cooktops", "Dishwashers", "Rangehoods", "Washing Machines", "Dryers", "Waste Disposals",
+        "Water Filters", "Appliance Repairs",
     ]},
     {"id": "specialist-home-services", "name": "Specialist Home Services", "icon": "HardHat", "color": "#DC2626", "subs": [
-        "Waterproofing", "Asbestos Removal (Licensed)", "Demolition",
-        "Structural Repairs", "Welding & Metal Fabrication", "Accessibility Modifications",
+        "Waterproofing", "Asbestos Removal (Licensed)", "Demolition", "Structural Repairs",
+        "Welding & Metal Fabrication", "Accessibility Modifications",
     ]},
     {"id": "gardening-lawn", "name": "Gardening & Lawn", "icon": "Flower2", "color": "#22C55E", "subs": [
         "Lawn Mowing", "Lawn Care & Fertilising", "New Lawns & Turf Laying", "Garden Maintenance",
-        "Weeding & Mulching", "Hedge Trimming", "Pruning", "Tree Felling & Removal",
-        "Stump Grinding", "Planting & Garden Makeovers", "Green Waste Removal", "Garden Irrigation",
+        "Weeding & Mulching", "Hedge Trimming", "Pruning", "Tree Felling & Removal", "Stump Grinding",
+        "Planting & Garden Makeovers", "Green Waste Removal", "Garden Irrigation", "Arborist & Tree Services",
     ]},
     {"id": "landscaping", "name": "Landscaping", "icon": "Trees", "color": "#15803D", "subs": [
         "Landscape Design", "Landscape Construction", "Garden Beds & Edging", "Paving & Pathways",
         "Landscape Retaining Walls", "Outdoor Living Areas", "Artificial Turf", "Water Features",
         "Garden Lighting", "Section Drainage", "Section Clearing",
     ]},
-    {"id": "cleaning", "name": "Cleaning", "icon": "SprayCan", "color": "#06B6D4", "subs": [
+    {"id": "cleaning", "name": "Cleaning & Home Hygiene", "icon": "SprayCan", "color": "#06B6D4", "subs": [
         "Regular House Cleaning", "Deep Cleaning", "End of Tenancy Cleaning", "Move In / Move Out Cleaning",
-        "Carpet Cleaning", "Upholstery Cleaning", "Window Cleaning", "Oven Cleaning",
-        "Water Blasting", "House Washing", "Gutter Cleaning", "Roof Cleaning & Moss Treatment",
-        "After-Builders Cleaning", "Mould Removal",
+        "Carpet Cleaning", "Upholstery Cleaning", "Window Cleaning", "Oven Cleaning", "Water Blasting",
+        "House Washing", "Gutter Cleaning", "Roof Cleaning & Moss Treatment", "After-Builders Cleaning",
+        "Mould Removal", "Pest Control", "Chimney & Duct Cleaning",
+    ]},
+    {"id": "building-engineering-inspections", "name": "Building Engineering & Inspections", "icon": "ClipboardCheck", "color": "#0F766E", "subs": [
+        "Building & Property Inspections", "Building Service Engineering", "Architecture & Drafting",
+    ]},
+    {"id": "moving-delivery-rubbish", "name": "Moving, Delivery & Rubbish Removal", "icon": "Truck", "color": "#B45309", "subs": [
+        "Rubbish & Green Waste Removal", "Man with a Van / Local Movers", "Full-Service House Removals",
+    ]},
+    {"id": "home-care-pet-services", "name": "Home Care, Elderly Support & Pet Services", "icon": "HeartHandshake", "color": "#DB2777", "subs": [
+        "Elderly & Independent Living Support", "Pet Care & Grooming",
+    ]},
+    {"id": "tutoring-advisory-professional", "name": "In-Home Tutoring, Advisory & Professional Services", "icon": "GraduationCap", "color": "#4F46E5", "subs": [
+        "In-Home Tutoring & Music Lessons", "Insurance & Mortgage Advisory", "Personal Tech & Admin Coaching",
     ]},
 ]
 
-COMMERCIAL_TAXONOMY = [
-    {"id": "building-maintenance", "name": "Building Maintenance", "icon": "Building2", "color": "#3B82F6", "subs": [
-        "General Building Maintenance", "Commercial Handyman", "Building Repairs",
-        "Preventative Maintenance", "Building Alterations", "Minor Commercial Fit-outs",
-    ]},
-    {"id": "electrical", "name": "Electrical", "icon": "Zap", "color": "#F59E0B", "subs": [
-        "Commercial Electrical", "Lighting Installation & Upgrades", "LED Retrofits",
-        "Emergency Lighting", "Switchboard Upgrades", "Power & Data",
-        "EV Charger Installation", "Electrical Fault Finding",
-    ]},
-    {"id": "plumbing-gas", "name": "Plumbing & Gas", "icon": "Droplets", "color": "#0EA5E9", "subs": [
-        "Commercial Plumbing", "Drain Repairs", "Hot Water Systems", "Water Supply",
-        "Pipework", "Bathrooms & Amenities", "Kitchens", "Gas Fitting",
-    ]},
-    {"id": "hvac-mechanical", "name": "HVAC & Mechanical", "icon": "Wind", "color": "#06B6D4", "subs": [
-        "Commercial Air Conditioning", "Heat Pumps", "Ventilation Systems", "Refrigeration",
-        "Extraction Systems", "HVAC Upgrades", "Mechanical Plant Installation",
-    ]},
-    {"id": "roofing-waterproofing", "name": "Roofing & Waterproofing", "icon": "Home", "color": "#EF4444", "subs": [
-        "Roof Repairs", "Roof Replacement", "Commercial Roofing", "Gutters & Downpipes",
-        "Membrane Roofing", "Waterproofing", "Leak Repairs",
-    ]},
-    {"id": "carpentry-joinery", "name": "Carpentry & Joinery", "icon": "Hammer", "color": "#A16207", "subs": [
-        "Commercial Carpentry", "Office Fit-outs", "Doors & Hardware", "Windows",
-        "Partitions", "Custom Joinery", "Cabinetry",
-    ]},
-    {"id": "interior-finishes", "name": "Interior Finishes", "icon": "Paintbrush", "color": "#EC4899", "subs": [
-        "Painting", "Gib Installation", "Plastering", "Ceiling Repairs",
-        "Suspended Ceilings", "Flooring", "Tiling",
-    ]},
-    {"id": "exterior-works", "name": "Exterior Works", "icon": "TreePine", "color": "#65A30D", "subs": [
-        "Cladding", "Facade Repairs", "Concrete Repairs", "Asphalt",
-        "Carparks", "Footpaths", "Retaining Walls", "Fencing & Gates",
-    ]},
-    {"id": "glass-aluminium", "name": "Glass & Aluminium", "icon": "Square", "color": "#0891B2", "subs": [
-        "Commercial Glazing", "Shopfront Glass", "Aluminium Joinery",
-        "Automatic Doors", "Glass Replacement", "Balustrades",
-    ]},
-    {"id": "fire-protection", "name": "Fire Protection", "icon": "Flame", "color": "#DC2626", "subs": [
-        "Fire Alarms", "Fire Sprinklers", "Fire Doors", "Passive Fire Protection",
-        "Fire Compliance Upgrades", "Emergency Lighting",
-    ]},
-    {"id": "security-systems", "name": "Security Systems", "icon": "ShieldCheck", "color": "#7C3AED", "subs": [
-        "CCTV Installation", "Alarm Systems", "Access Control", "Intercom Systems",
-        "Boom Gates", "Security Bollards", "Automatic Gates",
-    ]},
-    {"id": "data-communications", "name": "Data & Communications", "icon": "Router", "color": "#2563EB", "subs": [
-        "Structured Cabling", "Fibre Installation", "Network Cabling",
-        "Server Cabinets", "Wi-Fi Installation", "Communications Infrastructure",
-    ]},
-    {"id": "building-automation", "name": "Building Automation", "icon": "Cpu", "color": "#8B5CF6", "subs": [
-        "Building Management Systems (BMS)", "Smart Lighting", "HVAC Controls",
-        "Energy Monitoring", "Access Automation", "Smart Building Upgrades",
-    ]},
-    {"id": "renewable-energy", "name": "Renewable Energy", "icon": "Sun", "color": "#10B981", "subs": [
-        "Commercial Solar", "Battery Storage", "EV Charging Infrastructure",
-        "Energy Monitoring", "Solar Maintenance",
-    ]},
-    {"id": "renovations-fitouts", "name": "Commercial Renovations & Fit-outs", "icon": "Sparkles", "color": "#F97316", "subs": [
-        "Office Renovations", "Retail Fit-outs", "Hospitality Fit-outs", "Medical Fit-outs",
-        "Warehouse Fit-outs", "Interior Refurbishments", "Building Upgrades",
-        "Accessibility Upgrades",
-    ]},
-    {"id": "commercial-cleaning", "name": "Commercial Cleaning", "icon": "SprayCan", "color": "#06B6D4", "subs": [
-        "Office Cleaning", "Retail Cleaning", "Medical & Healthcare Cleaning", "Industrial & Warehouse Cleaning",
-        "School & Childcare Cleaning", "Commercial Window Cleaning", "High-Rise Window Cleaning",
-        "Carpet & Hard Floor Care", "Builders' Clean", "Commercial Water Blasting",
-        "Washroom Hygiene Services", "Body Corporate Cleaning",
-    ]},
-    {"id": "grounds-maintenance", "name": "Gardening & Grounds Maintenance", "icon": "Flower2", "color": "#22C55E", "subs": [
-        "Commercial Lawn Mowing", "Grounds Maintenance Contracts", "Hedge & Shrub Maintenance",
-        "Tree Care & Arborist", "Weed Control & Spraying", "Commercial Green Waste Removal",
-        "Irrigation Maintenance", "Interior Plant Care",
-    ]},
-    {"id": "commercial-landscaping", "name": "Landscaping", "icon": "Trees", "color": "#15803D", "subs": [
-        "Commercial Landscape Design", "Commercial Landscape Construction", "Paving & Hardscaping",
-        "Car Park Landscaping", "Commercial Retaining Walls", "Commercial Artificial Turf",
-        "Outdoor & Amenity Lighting", "Stormwater & Drainage",
-    ]},
-]
 
 
 def _slug(s: str) -> str:
@@ -2892,7 +2823,6 @@ def _index_taxonomy(taxonomy: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]
     return idx
 
 
-COMMERCIAL_TAXONOMY_INDEX = _index_taxonomy(COMMERCIAL_TAXONOMY)
 RESIDENTIAL_TAXONOMY_INDEX = _index_taxonomy(RESIDENTIAL_TAXONOMY)
 
 
@@ -2912,12 +2842,6 @@ def _taxonomy_payload(taxonomy: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-@api.get("/services/commercial-taxonomy")
-async def commercial_taxonomy():
-    """15-category commercial services taxonomy with all subcategories."""
-    return _taxonomy_payload(COMMERCIAL_TAXONOMY)
-
-
 @api.get("/services/residential-taxonomy")
 async def residential_taxonomy():
     """18-category residential home services taxonomy — homeowners, tenants, landlords, holiday-home owners."""
@@ -2926,125 +2850,143 @@ async def residential_taxonomy():
 
 @api.get("/services/taxonomy/{service_type}")
 async def taxonomy_by_type(service_type: str):
-    """Unified entry — pass 'residential' or 'commercial'."""
-    if service_type == "commercial":
-        return _taxonomy_payload(COMMERCIAL_TAXONOMY)
+    """Pro Finder NZ is residential-only — 'residential' is the only service type."""
     if service_type == "residential":
         return _taxonomy_payload(RESIDENTIAL_TAXONOMY)
-    raise HTTPException(status_code=404, detail="Unknown service_type. Use 'residential' or 'commercial'.")
+    raise HTTPException(status_code=404, detail="Only residential services are offered.")
 
 
-# (keywords, residential sub, commercial sub) — drives free-text job type detection
+# (keywords, residential sub) — drives free-text job type detection
 SERVICE_KEYWORDS: List[tuple] = [
-    (["tap", "faucet", "dripping"], "Tap & Toilet Repairs", "Commercial Plumbing"),
-    (["toilet", "cistern", "loo"], "Tap & Toilet Repairs", "Bathrooms & Amenities"),
-    (["leak", "leaking", "burst pipe", "water leak"], "Leak Repairs", "Pipework"),
-    (["drain", "blocked", "blockage", "clogged", "sewer"], "Blocked Drains", "Drain Repairs"),
-    (["hot water", "cylinder", "califont"], "Hot Water Systems", "Hot Water Systems"),
-    (["gas", "gas fitting", "gas bottle", "gas hob"], "Gas Fitting & Gas Appliances", "Gas Fitting"),
-    (["plumber", "plumbing", "pipe"], "Residential Plumbing", "Commercial Plumbing"),
-    (["electrician", "sparky", "wiring", "rewire"], "New Wiring & Rewiring", "Commercial Electrical"),
-    (["power point", "socket", "switch", "outlet"], "Power Points & Switches", "Power & Data"),
-    (["light", "lights", "lighting", "downlight", "led"], "Lighting Installation", "Lighting Installation & Upgrades"),
-    (["switchboard", "fuse"], "Switchboard Upgrades", "Switchboard Upgrades"),
-    (["ev charger", "car charger"], "EV Charger Installation", "EV Charger Installation"),
-    (["smoke alarm"], "Smoke Alarms", "Fire Alarms"),
-    (["tripping", "no power", "power out", "electrical fault"], "Fault Finding & Repairs", "Electrical Fault Finding"),
-    (["heat pump", "heatpump"], "Heat Pump Installation", "Heat Pumps"),
-    (["air con", "aircon", "air conditioning", "air conditioner"], "Air Conditioning", "Commercial Air Conditioning"),
-    (["extractor", "ventilation", "condensation"], "Bathroom Extractor Fans", "Ventilation Systems"),
-    (["roof", "roofer", "roofing", "tiles cracked"], "Roof Repairs", "Roof Repairs"),
-    (["gutter", "gutters", "spouting", "downpipe"], "Gutter Repairs", "Gutters & Downpipes"),
-    (["deck", "decking"], "Deck Construction", "Commercial Carpentry"),
-    (["fence", "fencing"], "Fencing", "Fencing & Gates"),
-    (["pergola"], "Pergolas", "Commercial Carpentry"),
-    (["door", "doors"], "Doors", "Doors & Hardware"),
-    (["cabinet", "cabinetry", "joinery"], "Built-in Cabinets", "Cabinetry"),
-    (["carpenter", "builder", "carpentry"], "General Carpentry", "Commercial Carpentry"),
-    (["paint", "painter", "painting", "repaint"], "Interior Painting", "Painting"),
-    (["exterior paint", "paint the house", "outside of the house"], "Exterior Painting", "Painting"),
-    (["gib", "plasterboard"], "Gib Installation", "Gib Installation"),
-    (["plaster", "plastering"], "Plastering", "Plastering"),
-    (["wallpaper"], "Wallpaper Installation", "Painting"),
-    (["carpet laying", "new carpet"], "Carpet Installation", "Flooring"),
-    (["tile", "tiles", "tiling", "tiler"], "Floor & Wall Tiling", "Tiling"),
-    (["floor", "flooring", "floorboards", "laminate", "vinyl"], "Floor Repairs", "Flooring"),
-    (["kitchen renovation", "new kitchen", "kitchen reno"], "Kitchen Renovations", "Hospitality Fit-outs"),
-    (["bathroom renovation", "bathroom reno", "new bathroom"], "Bathroom Renovations", "Bathrooms & Amenities"),
-    (["renovation", "extension", "alteration"], "Home Alterations", "Office Renovations"),
-    (["driveway", "concrete"], "Driveways", "Concrete Repairs"),
-    (["excavation", "digger"], "Excavation", "Concrete Repairs"),
-    (["window", "glass", "glazing", "double glazing"], "Glass Replacement", "Glass Replacement"),
-    (["cctv", "security camera", "camera"], "CCTV Installation", "CCTV Installation"),
-    (["alarm", "burglar"], "Alarm Systems", "Alarm Systems"),
-    (["wifi", "wi-fi", "internet", "network"], "Wi-Fi Installation", "Wi-Fi Installation"),
-    (["tv mount", "mount tv", "tv on the wall"], "TV Wall Mounting", "Communications Infrastructure"),
-    (["solar", "solar panel"], "Solar Panel Installation", "Commercial Solar"),
-    (["battery"], "Home Battery Installation", "Battery Storage"),
-    (["pool", "swimming pool"], "Swimming Pool Installation", "Building Upgrades"),
-    (["spa", "hot tub"], "Spa Pool Installation", "Building Upgrades"),
-    (["insulation", "insulate"], "Ceiling Insulation", "Building Upgrades"),
-    (["dishwasher"], "Dishwashers", "Kitchens"),
-    (["oven install", "cooktop", "hob"], "Ovens & Cooktops", "Kitchens"),
-    (["washing machine"], "Washing Machines", "Commercial Plumbing"),
-    (["rangehood"], "Rangehoods", "Extraction Systems"),
-    (["asbestos"], "Asbestos Removal (Licensed)", "Building Repairs"),
-    (["demolition", "demolish"], "Demolition", "Building Alterations"),
-    (["welding", "welder", "metal"], "Welding & Metal Fabrication", "Building Repairs"),
-    (["handyman", "odd jobs", "fix", "repair", "broken"], "Handyman Services", "Commercial Handyman"),
+    (["tap", "faucet", "dripping"], "Tap & Toilet Repairs"),
+    (["toilet", "cistern", "loo"], "Tap & Toilet Repairs"),
+    (["leak", "leaking", "burst pipe", "water leak"], "Leak Repairs"),
+    (["drain", "blocked", "blockage", "clogged", "sewer"], "Blocked Drains"),
+    (["hot water", "cylinder", "califont"], "Hot Water Systems"),
+    (["gas", "gas fitting", "gas bottle", "gas hob"], "Gas Fitting & Gas Appliances"),
+    (["plumber", "plumbing", "pipe"], "Residential Plumbing"),
+    (["electrician", "sparky", "wiring", "rewire"], "New Wiring & Rewiring"),
+    (["power point", "socket", "switch", "outlet"], "Power Points & Switches"),
+    (["light", "lights", "lighting", "downlight", "led"], "Lighting Installation"),
+    (["switchboard", "fuse"], "Switchboard Upgrades"),
+    (["ev charger", "car charger"], "EV Charger Installation"),
+    (["smoke alarm"], "Smoke Alarms"),
+    (["tripping", "no power", "power out", "electrical fault"], "Fault Finding & Repairs"),
+    (["heat pump", "heatpump"], "Heat Pump Installation"),
+    (["air con", "aircon", "air conditioning", "air conditioner"], "Air Conditioning"),
+    (["extractor", "ventilation", "condensation"], "Bathroom Extractor Fans"),
+    (["roof", "roofer", "roofing", "tiles cracked"], "Roof Repairs"),
+    (["gutter", "gutters", "spouting", "downpipe"], "Gutter Repairs"),
+    (["deck", "decking"], "Deck Construction"),
+    (["fence", "fencing"], "Fencing"),
+    (["pergola"], "Pergolas"),
+    (["door", "doors"], "Doors"),
+    (["cabinet", "cabinetry", "joinery"], "Built-in Cabinets"),
+    (["carpenter", "builder", "carpentry"], "General Carpentry"),
+    (["paint", "painter", "painting", "repaint"], "Interior Painting"),
+    (["exterior paint", "paint the house", "outside of the house"], "Exterior Painting"),
+    (["gib", "plasterboard"], "Gib Installation"),
+    (["plaster", "plastering"], "Plastering"),
+    (["wallpaper"], "Wallpaper Installation"),
+    (["carpet laying", "new carpet"], "Carpet Installation"),
+    (["tile", "tiles", "tiling", "tiler"], "Floor & Wall Tiling"),
+    (["floor", "flooring", "floorboards", "laminate", "vinyl"], "Floor Repairs"),
+    (["kitchen renovation", "new kitchen", "kitchen reno"], "Kitchen Renovations"),
+    (["bathroom renovation", "bathroom reno", "new bathroom"], "Bathroom Renovations"),
+    (["renovation", "extension", "alteration"], "Home Alterations"),
+    (["driveway", "concrete"], "Driveways"),
+    (["excavation", "digger"], "Excavation"),
+    (["window", "glass", "glazing", "double glazing"], "Glass Replacement"),
+    (["cctv", "security camera", "camera"], "CCTV Installation"),
+    (["alarm", "burglar"], "Alarm Systems"),
+    (["wifi", "wi-fi", "internet", "network"], "Wi-Fi Installation"),
+    (["tv mount", "mount tv", "tv on the wall"], "TV Wall Mounting"),
+    (["solar", "solar panel"], "Solar Panel Installation"),
+    (["battery"], "Home Battery Installation"),
+    (["pool", "swimming pool"], "Swimming Pool Installation"),
+    (["spa", "hot tub"], "Spa Pool Installation"),
+    (["insulation", "insulate"], "Ceiling Insulation"),
+    (["dishwasher"], "Dishwashers"),
+    (["oven install", "cooktop", "hob"], "Ovens & Cooktops"),
+    (["washing machine"], "Washing Machines"),
+    (["rangehood"], "Rangehoods"),
+    (["asbestos"], "Asbestos Removal (Licensed)"),
+    (["demolition", "demolish"], "Demolition"),
+    (["welding", "welder", "metal"], "Welding & Metal Fabrication"),
+    (["handyman", "odd jobs", "fix", "repair", "broken"], "Handyman Services"),
     # Gardening & lawn
-    (["mow", "mowing", "lawn", "grass", "lawns"], "Lawn Mowing", "Commercial Lawn Mowing"),
-    (["fertilise", "fertilize", "lawn care", "patchy lawn"], "Lawn Care & Fertilising", "Grounds Maintenance Contracts"),
-    (["turf", "new lawn", "lawn seed", "re-sow"], "New Lawns & Turf Laying", "Grounds Maintenance Contracts"),
-    (["garden", "gardener", "gardening", "tidy up"], "Garden Maintenance", "Grounds Maintenance Contracts"),
-    (["weed", "weeds", "weeding", "mulch", "bark"], "Weeding & Mulching", "Weed Control & Spraying"),
-    (["hedge", "hedges"], "Hedge Trimming", "Hedge & Shrub Maintenance"),
-    (["prune", "pruning", "shrub"], "Pruning", "Hedge & Shrub Maintenance"),
-    (["tree", "trees", "arborist", "felling"], "Tree Felling & Removal", "Tree Care & Arborist"),
-    (["stump"], "Stump Grinding", "Tree Care & Arborist"),
-    (["planting", "plants", "flower", "flowers", "vege garden"], "Planting & Garden Makeovers", "Interior Plant Care"),
-    (["green waste", "garden waste", "rubbish"], "Green Waste Removal", "Commercial Green Waste Removal"),
-    (["irrigation", "sprinkler", "watering"], "Garden Irrigation", "Irrigation Maintenance"),
+    (["mow", "mowing", "lawn", "grass", "lawns"], "Lawn Mowing"),
+    (["fertilise", "fertilize", "lawn care", "patchy lawn"], "Lawn Care & Fertilising"),
+    (["turf", "new lawn", "lawn seed", "re-sow"], "New Lawns & Turf Laying"),
+    (["garden", "gardener", "gardening", "tidy up"], "Garden Maintenance"),
+    (["weed", "weeds", "weeding", "mulch", "bark"], "Weeding & Mulching"),
+    (["hedge", "hedges"], "Hedge Trimming"),
+    (["prune", "pruning", "shrub"], "Pruning"),
+    (["tree", "trees", "arborist", "felling"], "Tree Felling & Removal"),
+    (["stump"], "Stump Grinding"),
+    (["planting", "plants", "flower", "flowers", "vege garden"], "Planting & Garden Makeovers"),
+    (["green waste", "garden waste", "rubbish"], "Green Waste Removal"),
+    (["irrigation", "sprinkler", "watering"], "Garden Irrigation"),
     # Landscaping
-    (["landscape", "landscaping", "landscaper"], "Landscape Design", "Commercial Landscape Design"),
-    (["garden bed", "edging", "raised bed"], "Garden Beds & Edging", "Commercial Landscape Construction"),
-    (["paving", "pavers", "path", "pathway"], "Paving & Pathways", "Paving & Hardscaping"),
-    (["retaining wall"], "Landscape Retaining Walls", "Commercial Retaining Walls"),
-    (["patio", "courtyard", "outdoor area"], "Outdoor Living Areas", "Commercial Landscape Construction"),
-    (["artificial turf", "artificial grass", "fake grass"], "Artificial Turf", "Commercial Artificial Turf"),
-    (["water feature", "pond", "fountain"], "Water Features", "Commercial Landscape Construction"),
-    (["garden lighting", "outdoor lighting"], "Garden Lighting", "Outdoor & Amenity Lighting"),
-    (["drainage", "soggy", "waterlogged", "stormwater"], "Section Drainage", "Stormwater & Drainage"),
-    (["section clearing", "clear the section", "overgrown", "dirt", "earth"], "Section Clearing", "Commercial Landscape Construction"),
+    (["landscape", "landscaping", "landscaper"], "Landscape Design"),
+    (["garden bed", "edging", "raised bed"], "Garden Beds & Edging"),
+    (["paving", "pavers", "path", "pathway"], "Paving & Pathways"),
+    (["retaining wall"], "Landscape Retaining Walls"),
+    (["patio", "courtyard", "outdoor area"], "Outdoor Living Areas"),
+    (["artificial turf", "artificial grass", "fake grass"], "Artificial Turf"),
+    (["water feature", "pond", "fountain"], "Water Features"),
+    (["garden lighting", "outdoor lighting"], "Garden Lighting"),
+    (["drainage", "soggy", "waterlogged", "stormwater"], "Section Drainage"),
+    (["section clearing", "clear the section", "overgrown", "dirt", "earth"], "Section Clearing"),
     # Cleaning
-    (["clean", "cleaner", "cleaning", "housekeeping"], "Regular House Cleaning", "Office Cleaning"),
-    (["deep clean", "spring clean"], "Deep Cleaning", "Builders' Clean"),
-    (["end of tenancy", "bond clean", "vacate clean", "end of lease"], "End of Tenancy Cleaning", "Body Corporate Cleaning"),
-    (["moving out", "move out", "moving in", "move in"], "Move In / Move Out Cleaning", "Office Cleaning"),
-    (["carpet clean", "carpet shampoo", "stain"], "Carpet Cleaning", "Carpet & Hard Floor Care"),
-    (["couch", "sofa", "upholstery"], "Upholstery Cleaning", "Carpet & Hard Floor Care"),
-    (["window clean", "windows cleaned", "clean windows"], "Window Cleaning", "Commercial Window Cleaning"),
-    (["oven clean"], "Oven Cleaning", "Office Cleaning"),
-    (["water blast", "waterblast", "pressure wash", "water blasting"], "Water Blasting", "Commercial Water Blasting"),
-    (["house wash", "soft wash", "wash the house"], "House Washing", "Commercial Water Blasting"),
-    (["gutter clean", "clean gutters", "clean the gutters"], "Gutter Cleaning", "Commercial Water Blasting"),
-    (["moss", "lichen", "roof clean"], "Roof Cleaning & Moss Treatment", "Commercial Water Blasting"),
-    (["builders clean", "after builders", "construction clean"], "After-Builders Cleaning", "Builders' Clean"),
-    (["mould", "mold", "mildew"], "Mould Removal", "Office Cleaning"),
-    (["office clean", "office cleaning"], "Regular House Cleaning", "Office Cleaning"),
-    (["washroom", "sanitary", "hygiene"], "Deep Cleaning", "Washroom Hygiene Services"),
+    (["clean", "cleaner", "cleaning", "housekeeping"], "Regular House Cleaning"),
+    (["deep clean", "spring clean"], "Deep Cleaning"),
+    (["end of tenancy", "bond clean", "vacate clean", "end of lease"], "End of Tenancy Cleaning"),
+    (["moving out", "move out", "moving in", "move in"], "Move In / Move Out Cleaning"),
+    (["carpet clean", "carpet shampoo", "stain"], "Carpet Cleaning"),
+    (["couch", "sofa", "upholstery"], "Upholstery Cleaning"),
+    (["window clean", "windows cleaned", "clean windows"], "Window Cleaning"),
+    (["oven clean"], "Oven Cleaning"),
+    (["water blast", "waterblast", "pressure wash", "water blasting"], "Water Blasting"),
+    (["house wash", "soft wash", "wash the house"], "House Washing"),
+    (["gutter clean", "clean gutters", "clean the gutters"], "Gutter Cleaning"),
+    (["moss", "lichen", "roof clean"], "Roof Cleaning & Moss Treatment"),
+    (["builders clean", "after builders", "construction clean"], "After-Builders Cleaning"),
+    (["mould", "mold", "mildew"], "Mould Removal"),
+    (["office clean", "office cleaning"], "Regular House Cleaning"),
+    (["washroom", "sanitary", "hygiene"], "Deep Cleaning"),
+    (["locksmith", "locked out", "lock change", "rekey", "new locks"], "Locksmith Services"),
+    (["builder", "renovation", "renovate"], "Builders & Renovations"),
+    (["brick", "bricklayer", "masonry", "block wall"], "Bricklaying & Masonry"),
+    (["arborist", "tree surgeon", "tree trimming"], "Arborist & Tree Services"),
+    (["gate", "gates"], "Gates"),
+    (["pest", "pests", "rats", "mice", "rodent", "rodents", "rats in the roof", "mice in the", "cockroach", "wasps", "fleas", "borer"], "Pest Control"),
+    (["chimney", "flue", "duct clean"], "Chimney & Duct Cleaning"),
+    (["appliance repair", "fridge repair", "washing machine repair", "oven repair", "broken dishwasher"], "Appliance Repairs"),
+    (["computer", "laptop", "printer", "home it", "tech support"], "Home IT Support"),
+    (["inspection", "inspector", "pre-purchase", "building report", "builders report"], "Building & Property Inspections"),
+    (["engineer", "structural engineer", "building services"], "Building Service Engineering"),
+    (["architect", "draughtsman", "drafting", "house plans"], "Architecture & Drafting"),
+    (["rubbish", "junk", "skip bin", "dump run"], "Rubbish & Green Waste Removal"),
+    (["man with a van", "local move", "movers", "furniture delivery"], "Man with a Van / Local Movers"),
+    (["house move", "removalist", "removals", "moving house"], "Full-Service House Removals"),
+    (["elderly", "caregiver", "home help", "independent living"], "Elderly & Independent Living Support"),
+    (["pet", "dog walking", "dog grooming", "pet sitting", "cat sitting"], "Pet Care & Grooming"),
+    (["tutor", "tutoring", "music lessons", "piano lessons", "homework"], "In-Home Tutoring & Music Lessons"),
+    (["mortgage", "insurance advice", "insurance adviser"], "Insurance & Mortgage Advisory"),
+    (["admin help", "tech coaching", "smartphone help", "paperwork"], "Personal Tech & Admin Coaching"),
 ]
 
 
-def _detect_service(text: str, service_type: str) -> List[Dict[str, Any]]:
+def _detect_service(text: str, service_type: str = "residential") -> List[Dict[str, Any]]:
     import re
-    taxonomy = COMMERCIAL_TAXONOMY if service_type == "commercial" else RESIDENTIAL_TAXONOMY
+    taxonomy = RESIDENTIAL_TAXONOMY
     t = " " + re.sub(r"[^a-z0-9\s-]", " ", text.lower()) + " "
     words = set(re.findall(r"[a-z]{4,}", t))
     by_name = {s["name"]: (c, s) for c in taxonomy for s in c["subcategories"]}
     scores: Dict[str, float] = {}
-    for phrases, res_sub, com_sub in SERVICE_KEYWORDS:
-        name = com_sub if service_type == "commercial" else res_sub
+    for phrases, res_sub in SERVICE_KEYWORDS:
+        name = res_sub
         if name not in by_name:
             continue
         for ph in phrases:
@@ -3068,14 +3010,6 @@ async def detect_service(text: str, service_type: str = "residential"):
     """Guess the job category/subcategory from a free-text job description."""
     matches = _detect_service(text[:1000], service_type)
     return {"match": matches[0] if matches else None, "alternatives": matches[1:]}
-
-
-@api.get("/services/commercial-taxonomy/{category_id}")
-async def commercial_taxonomy_category(category_id: str):
-    for c in COMMERCIAL_TAXONOMY:
-        if c["id"] == category_id:
-            return {"id": c["id"], "name": c["name"], "icon": c["icon"], "color": c["color"], "subcategories": c["subcategories"]}
-    raise HTTPException(status_code=404, detail="Category not found")
 
 
 @api.get("/services/residential-taxonomy/{category_id}")
@@ -3761,6 +3695,23 @@ async def seed_data():
                 })
 
 
+async def purge_commercial_data():
+    """Residential-only app: remove any commercial jobs (and their bids) and commercial properties. Idempotent."""
+    try:
+        jobs = await db.jobs.find({"service_type": {"$ne": "residential", "$exists": True}}, {"job_id": 1, "_id": 0}).to_list(None)
+        job_ids = [j["job_id"] for j in jobs]
+        if job_ids:
+            await db.bids.delete_many({"job_id": {"$in": job_ids}})
+            await db.jobs.delete_many({"job_id": {"$in": job_ids}})
+        # Rentals are homes: keep them as residential. Commercial / mixed-use properties are removed.
+        await db.properties.update_many({"property_type": "rental"}, {"$set": {"property_type": "residential"}})
+        props = await db.properties.delete_many({"property_type": {"$in": ["commercial", "mixed"]}})
+        if job_ids or props.deleted_count:
+            logging.info(f"Removed {len(job_ids)} commercial jobs and {props.deleted_count} commercial properties")
+    except Exception as e:
+        logging.error(f"Commercial data cleanup failed: {e}")
+
+
 @app.on_event("startup")
 async def on_startup():
     try:
@@ -3769,6 +3720,7 @@ async def on_startup():
         logging.getLogger(__name__).error(f"Storage init failed: {e}")
     await seed_data()
     await seed_demo_accounts()
+    await purge_commercial_data()
     logging.info("Pro Finder NZ startup complete")
 
 

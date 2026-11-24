@@ -10,11 +10,11 @@ import Logo from '../components/Logo';
 import { extractError } from '../lib/errors';
 
 const roles = [
-  { id: 'customer', title: 'Customer', desc: 'I need a service for my home or business', icon: User, iconBg: 'bg-blue-500' },
+  { id: 'customer', title: 'Customer', desc: 'I need a service for my home', icon: User, iconBg: 'bg-blue-500' },
   { id: 'provider', title: 'Service Provider', desc: 'I offer trade services to clients', icon: Wrench, iconBg: 'bg-emerald-500' },
   { id: 'property', title: 'Property Manager', desc: 'Manage multiple properties and maintenance', icon: Building2, iconBg: 'bg-violet-500' },
   { id: 'landlord', title: 'Landlord', desc: 'Maintain rental properties and track spend', icon: KeyRound, iconBg: 'bg-orange-500' },
-  { id: 'facilities', title: 'Facilities Management', desc: 'Commercial sites, SLAs and preventive maintenance', icon: Landmark, iconBg: 'bg-slate-600' },
+  { id: 'facilities', title: 'Facilities Management', desc: 'Apartment buildings, body corporates and shared spaces', icon: Landmark, iconBg: 'bg-slate-600' },
   { id: 'insurance', title: 'Insurance Partner', desc: 'Access shared property histories & docs', icon: Shield, iconBg: 'bg-teal-500' },
 ];
 
@@ -67,7 +67,7 @@ export default function LandingRoleSelect() {
           Live preview · No signup required
         </div>
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.05]">
-          Your home, business, or property,
+          Your home or rental property,
           <span className="block bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
             managed intelligently.
           </span>

@@ -23,6 +23,11 @@ Rebuild the Replit app **Dispatchr** as a full production-ready web app with imp
 7. Live Map, News Feed, Cost Estimator, Community Forum, Legal & Privacy, Guide & Help, Report Provider, Disputes, More menu
 8. Cookie-based JWT auth (httpOnly, SameSite=None, Secure)
 
+## What's Implemented (2026-11 — Residential-only + expanded taxonomy)
+- ✅ **Residential-only app**: commercial taxonomy, endpoints (`/services/commercial-taxonomy*`, `/services/taxonomy/commercial` → 404) and all Residential/Commercial toggles removed (Book flow is now 1 Describe/Browse → 2 Post Job). POST /jobs and /properties accept only residential. Startup `purge_commercial_data()` deletes commercial jobs (+bids) and commercial/mixed properties, converts `rental` → residential (idempotent, also cleans production).
+- ✅ **Facilities Management kept, reworded** for apartment buildings & body corporates (dashboard, landing card, sidebar "Maintenance Requests").
+- ✅ **Taxonomy expanded** to 25 categories / 179 services: added Locksmith Services, Builders & Renovations, Bricklaying & Masonry, Arborist & Tree Services, Gates, Pest Control, Chimney & Duct Cleaning, Appliance Repairs, Home IT Support + new categories Building Engineering & Inspections, Moving/Delivery & Rubbish Removal, Home Care/Elderly Support & Pet Services, In-Home Tutoring/Advisory & Professional Services; detection keywords added. Renamed: Cleaning & Home Hygiene, Appliance Installation & Repairs, Home IT, Data & Communications.
+
 ## What's Implemented (2026-11 — Search-first booking, Post Job only, saved properties)
 - ✅ **Customer home = search bar only** (`pages/client/ClientHome.jsx`, `components/ServiceSearch.jsx`): predictive service suggestions (both taxonomies + `/services/detect` keywords) + **Book** button.
 - ✅ **Book panel** (`components/BookingPanel.jsx`, full-screen, slides from right) → `components/JobRequestForm.jsx` flow mode: 1 Property type (Residential/Commercial) → 2 Describe your job / Browse providers → 3 Type of quotation = **Post Job only** → opens 2nd full-screen window with job details. `/post-job` page reuses the same form (page mode).

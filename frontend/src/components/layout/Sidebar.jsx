@@ -93,7 +93,7 @@ const facilitiesNav = [
     { to: '/approvals', label: 'Approval Queue', icon: ShieldCheck },
     { to: '/tenancies', label: 'Tenant Requests', icon: Users },
     { to: '/property/dashboard', label: 'Sites', icon: Building2 },
-    { to: '/my-job-posts', label: 'SLA Tickets', icon: ClipboardList },
+    { to: '/my-job-posts', label: 'Maintenance Requests', icon: ClipboardList },
     { to: '/bookings', label: 'Bookings', icon: CalendarCheck },
     { to: '/messages', label: 'Messages', icon: MessageSquare },
   ]},

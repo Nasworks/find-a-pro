@@ -11,10 +11,7 @@ let servicesPromise = null;
 const loadServices = () => {
   if (servicesCache) return Promise.resolve(servicesCache);
   if (servicesPromise) return servicesPromise;
-  servicesPromise = Promise.all([
-    api.get('/services/taxonomy/residential').catch(() => ({ data: { categories: [] } })),
-    api.get('/services/taxonomy/commercial').catch(() => ({ data: { categories: [] } })),
-  ]).then(([res, com]) => {
+  servicesPromise = api.get('/services/taxonomy/residential').catch(() => ({ data: { categories: [] } })).then((res) => {
     const byName = new Map();
     const add = (cats, type) => {
       (cats || []).forEach((c) => {
@@ -31,7 +28,6 @@ const loadServices = () => {
       });
     };
     add(res.data.categories, 'residential');
-    add(com.data.categories, 'commercial');
     servicesCache = Array.from(byName.values());
     servicesPromise = null;
     return servicesCache;
@@ -174,7 +170,7 @@ export default function ServiceSearch({ value, onChange, selected, onSelect, onB
               <li key={e.key} role="option" aria-selected={i === active}>
                 <button
                   type="button"
-                  data-testid={`service-suggestion-${(e.residential || e.commercial).subcategory_id}`}
+                  data-testid={`service-suggestion-${e.residential.subcategory_id}`}
                   onMouseMove={() => active !== i && setActive(i)}
                   onClick={() => choose(e)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${i === active ? 'bg-accent' : ''}`}
