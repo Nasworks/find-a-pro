@@ -175,7 +175,7 @@ export default function ServiceSearch({ value, onChange, selected, onSelect, onB
                 <button
                   type="button"
                   data-testid={`service-suggestion-${(e.residential || e.commercial).subcategory_id}`}
-                  onMouseEnter={() => setActive(i)}
+                  onMouseMove={() => active !== i && setActive(i)}
                   onClick={() => choose(e)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${i === active ? 'bg-accent' : ''}`}
                 >

@@ -81,7 +81,7 @@ export default function PropertyDashboard() {
         <Link to="/post-job" className="bg-card border border-border rounded-2xl p-5 hover:border-primary/40 transition-colors">
           <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center mb-3"><Wrench className="w-5 h-5" /></div>
           <div className="font-semibold text-foreground">Post a maintenance job</div>
-          <div className="text-xs text-muted-foreground">Get 3 quotes from verified property-maintenance pros.</div>
+          <div className="text-xs text-muted-foreground">Get unlimited quotes from verified property-maintenance pros.</div>
         </Link>
         <Link to="/find-providers" data-testid="dashboard-find-providers" className="bg-gradient-to-br from-primary/10 via-blue-500/5 to-transparent border border-primary/30 rounded-2xl p-5 hover:border-primary/60 transition-colors">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-blue-600 text-white flex items-center justify-center mb-3"><Users className="w-5 h-5" /></div>

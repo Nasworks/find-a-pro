@@ -138,7 +138,7 @@ html[data-view-mode="mobile"], html[data-view-mode="mobile"] body { overflow-x: 
 .mobile-viewport-inner .overflow-x-auto::-webkit-scrollbar { display: none; }
 
 /* Dialogs portalled to body stay inside the screen */
-html[data-view-mode="mobile"] [role="dialog"]:not([data-state="closed"]):not(.side-pane-sheet):not([data-testid="mobile-menu-sheet"]) {
+html[data-view-mode="mobile"] [role="dialog"]:not([data-state="closed"]):not(.side-pane-sheet):not([data-testid="mobile-menu-sheet"]):not([data-testid="booking-panel"]):not([data-testid="booking-details-panel"]) {
   max-width: min(560px, calc(100vw - 16px)) !important;
   max-height: calc(100dvh - 32px);
   overflow-y: auto;

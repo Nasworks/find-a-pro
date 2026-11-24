@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only test of the redesigned customer home (/client-home): search bar + Book button, predictive suggestions, full-screen right-sliding BookingPanel, 4-step flow (property type -> describe/browse -> quotation type -> job details), browse navigation, job submit, /post-job regression, mobile/tablet layout. All flows work. One real bug found and FIXED: on mobile/tablet the booking panel did not cover the full screen (390px: x=16,w=374,h=812; 768px: x=208,w=560) because a global mobile dialog-clamp CSS rule in index.css applied to it. Added a :not([data-testid=\"booking-panel\"]) exclusion; retested - panel now 390x844 and 768x1024, no horizontal overflow.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BookingPanel (mobile/tablet)", "issue": "FIXED by testing agent: index.css rule html[data-view-mode=mobile] [role=dialog] {max-width:min(560px,100vw-16px); max-height:100dvh-32px} clamped the full-screen panel so it did not cover the screen and the bottom nav showed through. Excluded booking-panel from the rule.", "selector": "[data-testid='booking-panel']", "priority": "HIGH (fixed)"},
+      {"component": "ServiceSearch keyboard", "issue": "Hovering the mouse over the list sets the active item (onMouseEnter -> setActive). If the cursor is already where the list appears, typing free text and pressing Enter picks the hovered suggestion (e.g. 'fix my fence please' -> 'Fencing') and does not open the panel. Consider resetting active only from keyboard, or ignore hover until the mouse actually moves.", "selector": "[data-testid='service-search-input']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Navigation consistency", "issues": ["Customer sidebar 'Post a Job' and mobile bottom-nav 'Post' still go to the classic /post-job form, not the new Book flow. This may be on purpose; check it against the user's request to merge the old Post a Job page with the new selections."]},
+      {"screen": "BookingPanel commercial auto-detect", "issues": ["For the 'Heat Pump Installation' suggestion, switching to Commercial auto-detects 'Heat Pumps', but the 'Or did you mean' alternatives (Lighting Installation & Upgrades, EV Charger Installation) have nothing to do with it. This comes from how /services/detect ranks matches."]},
+      {"screen": "Desktop phone-frame preview (dispatchr_view_mode=mobile)", "issues": ["Not fully checked: the panel covered the whole 1920px browser instead of the phone frame. It is portalled to body, which is expected for portalled sheets."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Keep the index.css exclusion for booking-panel (or move the panel to a class like side-pane-sheet that the clamp rule already excludes)",
+    "Optional: stop mouse-hover highlight from hijacking Enter in ServiceSearch",
+    "Decide whether customer 'Post a Job' / bottom 'Post' should open the new Book flow"
+  ],
+  "critical_code_review_comments": [
+    "ServiceSearch: /services/detect is always called with service_type=residential, so detector boosts only reflect the residential taxonomy",
+    "JobRequestForm.jsx is 503 lines and holds both flow and page modes; consider splitting FlowMode/PageMode into separate components",
+    "Job detail page shows the category slug ('Plumbing-Gas') instead of category_name. This was already there before this change."
+  ],
+  "updated_files": ["/app/frontend/src/index.css"],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "95% (1 bug fixed, 1 low-priority keyboard edge case)"},
+  "seed_data_creation": "Created TEST_ jobs job_ab288f6186 (customer via the Book flow) and job_fb2b551f53 (landlord via /post-job). Both were deleted by id (200).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login: page.request.post('/api/auth/demo-login', {role:'customer'}). There is no /app/memory/test_credentials.md (only PRD.md). Verified: home shows only the heading, search and Book (Book is disabled when empty); suggestions appear at 2+ chars; 'dripping tap' -> Tap & Toilet Repairs; 'heat pump' -> Heat Pump Installation/Heat Pumps; the panel slides in at full width (desktop 1920x1080) and the back arrow closes it; no property type is preselected; Step 2 appears after picking a type; Browse goes to /find-providers?category=..&subcategory=.. or ?q= when nothing resolves; Describe -> Steps 3 and 4 with the title prefilled and the service auto-resolved; Residential<->Commercial switch re-resolves (Tap & Toilet Repairs <-> Commercial Plumbing); submit goes to /jobs/<id>; the /post-job classic form works for landlord."
+}

@@ -3,13 +3,14 @@ import { useNavigate, Link } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import {
   MapPin, Loader2, Home as HomeIcon, Building2, ChevronRight, Sparkles, Layers, KeyRound, ShieldCheck,
-  Pencil, Users, Zap, MessageSquare, ClipboardList, Check, ArrowRight,
+  Pencil, Users, ClipboardList, Check, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from './ui/sheet';
 import { Badge } from './ui/badge';
 import ServicePicker from './ServicePicker';
 import { useServiceDetect, DetectedAlternatives, providersLink } from './ServiceDetect';
@@ -33,11 +34,8 @@ const serviceFields = (sel) => ({
   subcategory_name: sel.subcategory_name,
 });
 
-const QUOTE_TYPES = [
-  { v: 'instant', l: 'Request Booking', badge: 'INSTANT', badgeCls: 'bg-primary text-primary-foreground', icon: Zap, iconCls: 'bg-primary', d: 'Small jobs · 3 nearest pros notified · First to accept wins' },
-  { v: 'quotes', l: 'Get 3 Quotes', badge: 'FREE', badgeCls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', icon: MessageSquare, iconCls: 'bg-emerald-500', d: '3 closest providers · Chat & negotiate · No commitment' },
-  { v: 'bids', l: 'Post a Job for Bids', badge: 'OPEN', badgeCls: 'bg-muted text-foreground', icon: ClipboardList, iconCls: 'bg-violet-500', d: 'Post publicly · Compare bids · Pick the best value' },
-];
+// Every job is posted open: any matching pro can quote or bid, with no cap on replies.
+const OPEN_MODE = 'bids';
 
 const StepTitle = ({ n, children }) => (
   <div className="flex items-center gap-2.5 mb-3">
@@ -75,6 +73,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
   const [activeTenancies, setActiveTenancies] = useState([]);
   const [routeViaManager, setRouteViaManager] = useState(true);
   const [findMode, setFindMode] = useState(''); // flow only: 'describe' | 'browse'
+  const [detailsOpen, setDetailsOpen] = useState(false); // flow only: job details window
 
   useEffect(() => {
     // Only tenants (customer role) should see the "route via manager" option
@@ -102,7 +101,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
     budget_min: '',
     budget_max: '',
     urgency: 'flexible',
-    mode: flow ? '' : (preset.mode || 'quotes'),
+    mode: OPEN_MODE,
     photos: preset.photos || [],
   });
 
@@ -149,10 +148,6 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
 
   const submit = async (e) => {
     e.preventDefault();
-    if (flow && !form.mode) {
-      toast.error('Please choose a type of quotation');
-      return;
-    }
     if (!form.title || !form.category) {
       toast.error('Please pick a service and enter a title');
       return;
@@ -344,7 +339,7 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
   /* ---------------- FLOW MODE (Book panel) ---------------- */
   if (flow) {
     return (
-      <form onSubmit={submit} className="space-y-8" data-testid="booking-flow">
+      <div className="space-y-8" data-testid="booking-flow">
         <section>
           <StepTitle n={1}>Property type</StepTitle>
           <div className="grid grid-cols-2 gap-3">
@@ -374,61 +369,66 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
         )}
 
         {form.service_type && findMode === 'describe' && (
-          <>
-            <section className="animate-in fade-in slide-in-from-bottom-2 duration-300" data-testid="booking-quote-section">
-              <StepTitle n={3}>Type of quotation</StepTitle>
-              <div className="space-y-2.5">
-                {QUOTE_TYPES.map((q) => {
-                  const active = form.mode === q.v;
-                  const Icon = q.icon;
-                  return (
-                    <button
-                      key={q.v}
-                      type="button"
-                      data-testid={`booking-mode-${q.v}`}
-                      aria-pressed={active}
-                      onClick={() => update('mode', q.v)}
-                      className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 text-left transition-all ${active ? 'border-primary bg-primary/5 shadow-sm' : 'border-border bg-card hover:border-primary/40'}`}
-                    >
-                      <div className={`w-11 h-11 rounded-xl ${q.iconCls} flex items-center justify-center text-white shrink-0`}>
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-foreground">{q.l}</span>
-                          <Badge className={`${q.badgeCls} border-0`}>{q.badge}</Badge>
-                        </div>
-                        <div className="text-xs sm:text-sm text-muted-foreground mt-0.5">{q.d}</div>
-                      </div>
-                      <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${active ? 'border-primary bg-primary' : 'border-border'}`}>
-                        {active && <Check className="w-3 h-3 text-primary-foreground" />}
-                      </span>
-                    </button>
-                  );
-                })}
+          <section className="animate-in fade-in slide-in-from-bottom-2 duration-300" data-testid="booking-quote-section">
+            <StepTitle n={3}>Type of quotation</StepTitle>
+            <button
+              type="button"
+              data-testid="booking-mode-post"
+              onClick={() => setDetailsOpen(true)}
+              className="w-full group flex items-center gap-4 p-4 rounded-2xl border-2 border-primary/40 bg-primary/5 hover:border-primary hover:shadow-md text-left transition-all"
+            >
+              <div className="w-11 h-11 rounded-xl bg-primary flex items-center justify-center text-white shrink-0">
+                <ClipboardList className="w-5 h-5" />
               </div>
-            </section>
-
-            {form.mode && (
-              <section className="animate-in fade-in slide-in-from-bottom-2 duration-300" data-testid="booking-details-section">
-                <StepTitle n={4}>Job details</StepTitle>
-                <div className="space-y-5 bg-card border border-border rounded-2xl p-5">
-                  {tenancyBlock}
-                  {serviceCard}
-                  {detailFields}
-                  <div className="flex gap-3 pt-2">
-                    <Button type="button" variant="outline" onClick={() => onCancel?.()} className="flex-1">Cancel</Button>
-                    <Button data-testid="post-job-submit" type="submit" disabled={saving} className="flex-1">
-                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post Job'}
-                    </Button>
-                  </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-foreground">Post Job</span>
+                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-0">FREE</Badge>
                 </div>
-              </section>
-            )}
-          </>
+                <div className="text-xs sm:text-sm text-muted-foreground mt-0.5">Open to every matching pro · Unlimited quotes &amp; bids · Chat with as many as you like</div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
+            </button>
+          </section>
         )}
+
+        {/* Second full-screen window: job details */}
+        <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
+          <SheetContent
+            side="right"
+            hideClose
+            className="w-full sm:max-w-none max-w-none p-0 border-0 flex flex-col gap-0"
+            data-testid="booking-details-panel"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            <div className="shrink-0 flex items-center gap-3 px-4 sm:px-6 h-16 border-b border-border bg-background/95 backdrop-blur">
+              <button type="button" onClick={() => setDetailsOpen(false)} data-testid="booking-details-back" className="p-2 -ml-2 rounded-full hover:bg-accent text-foreground" aria-label="Back to options">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="min-w-0">
+                <SheetTitle className="text-base font-semibold text-foreground leading-tight">Post a Job</SheetTitle>
+                <SheetDescription className="text-xs text-muted-foreground truncate">
+                  {serviceTypeLabel} · Unlimited quotes &amp; bids
+                </SheetDescription>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto overscroll-contain">
+              <form onSubmit={submit} className="max-w-2xl mx-auto px-4 sm:px-6 py-6 pb-16 space-y-5" data-testid="booking-details-section">
+                {tenancyBlock}
+                {serviceCard}
+                {detailFields}
+                <div className="flex gap-3 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setDetailsOpen(false)} className="flex-1">Back</Button>
+                  <Button data-testid="post-job-submit" type="submit" disabled={saving} className="flex-1">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Post Job'}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </SheetContent>
+        </Sheet>
         {picker}
-      </form>
+      </div>
     );
   }
 
@@ -470,25 +470,6 @@ export default function JobRequestForm({ preset = {}, flow = false, onCancel, on
 
         {serviceCard}
         {detailFields}
-
-        <div>
-          <Label>How would you like to receive offers?</Label>
-          <RadioGroup value={form.mode} onValueChange={(v) => update('mode', v)} className="mt-2 space-y-2">
-            {[
-              { v: 'instant', l: 'Instant Booking', d: 'First nearby pro accepts' },
-              { v: 'quotes', l: 'Get 3 Quotes', d: 'Compare & chat with 3 pros' },
-              { v: 'bids', l: 'Open Bidding', d: 'Public job — receive multiple bids' },
-            ].map((o) => (
-              <label key={o.v} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${form.mode === o.v ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}>
-                <RadioGroupItem value={o.v} id={`mode-${o.v}`} className="mt-0.5" />
-                <div>
-                  <div className="text-sm font-medium text-foreground">{o.l}</div>
-                  <div className="text-xs text-muted-foreground">{o.d}</div>
-                </div>
-              </label>
-            ))}
-          </RadioGroup>
-        </div>
 
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" onClick={() => (onCancel ? onCancel() : navigate(-1))} className="flex-1">Cancel</Button>
