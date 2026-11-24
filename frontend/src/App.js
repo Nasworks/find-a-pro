@@ -24,6 +24,9 @@ import JobDetail from './pages/client/JobDetail';
 import ProviderDashboard from './pages/provider/ProviderDashboard';
 import ProviderOnboarding from './pages/provider/ProviderOnboarding';
 import ReviewDocuments from './pages/shared/ReviewDocuments';
+import { PaymentSuccess, PaymentCancel } from './pages/PaymentResult';
+import Receipts from './pages/provider/Receipts';
+import ActiveProjects from './pages/provider/ActiveProjects';
 import ProviderJobBoard from './pages/provider/ProviderJobBoard';
 import ProviderEarnings from './pages/provider/ProviderEarnings';
 import ProviderCalendar from './pages/provider/ProviderCalendar';
@@ -100,6 +103,10 @@ function AppRouter() {
         <Route path="/provider/dashboard" element={<ProviderDashboard />} />
         <Route path="/provider/onboarding" element={<ProviderOnboarding />} />
         <Route path="/review/documents" element={<ReviewDocuments />} />
+        <Route path="/payment/success" element={<PaymentSuccess />} />
+        <Route path="/provider/receipts" element={<Receipts />} />
+        <Route path="/provider/projects" element={<ActiveProjects />} />
+        <Route path="/payment/cancel" element={<PaymentCancel />} />
         <Route path="/provider/job-board" element={<ProviderJobBoard />} />
         <Route path="/provider/earnings" element={<ProviderEarnings />} />
         <Route path="/provider/calendar" element={<ProviderCalendar />} />

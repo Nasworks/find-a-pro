@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import MatchedJobsFeed from '../../components/MatchedJobsFeed';
 import SpecializationBadges from '../../components/SpecializationBadges';
 import CredentialTicks from '../../components/CredentialTicks';
-import { Settings2 } from 'lucide-react';
+import { Settings2, FolderKanban, Receipt } from 'lucide-react';
 
 export default function ProviderDashboard() {
   const { user } = useAuth();
@@ -74,6 +74,8 @@ export default function ProviderDashboard() {
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-6">
           <QuickAction icon={ShieldCheck} title="Verify" desc="Qualifications & police check" color="bg-teal-500" to="/provider/verification" />
+          <QuickAction icon={FolderKanban} title="Active projects" desc="Stages & client updates" color="bg-indigo-500" to="/provider/projects" />
+          <QuickAction icon={Receipt} title="Scan receipt" desc="Materials, hire & costs" color="bg-orange-500" to="/provider/receipts" />
           <QuickAction icon={Users} title="Team" desc="Manage workers" color="bg-violet-500" />
           <QuickAction icon={Clock} title="Timesheet" desc="Track your time" color="bg-amber-500" to="/provider/timesheet" />
         </div>
@@ -83,7 +85,7 @@ export default function ProviderDashboard() {
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
             <div className="font-semibold text-foreground">My specializations</div>
-            <div className="text-xs text-muted-foreground">You're only matched with jobs in these services.</div>
+            <div className="text-xs text-muted-foreground">You&apos;re only matched with jobs in these services.</div>
           </div>
           <Button size="sm" variant="outline" onClick={() => navigate('/provider/onboarding')} data-testid="provider-edit-specializations"><Settings2 className="w-3.5 h-3.5 mr-1" /> Edit</Button>
         </div>

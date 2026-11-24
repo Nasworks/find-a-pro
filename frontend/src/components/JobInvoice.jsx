@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Button } from './ui/button';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import PayInvoiceButton from './PayInvoiceButton';
 
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '');
@@ -65,6 +66,8 @@ export const JobInvoice = ({ jobId, hideWhenEmpty = false }) => {
         <Row label={`GST (${Math.round(inv.gst_rate * 100)}%)`} value={money(inv.gst)} testid="invoice-gst" />
         <div className="flex justify-between font-bold text-base pt-1"><span>Total</span><span data-testid="invoice-total" className="tabular-nums">{money(inv.total)}</span></div>
       </div>
+      {!isProvider && inv.is_sent_copy && <PayInvoiceButton jobId={jobId} />}
+      {isProvider && inv.payment_status === 'paid' && <div className="mt-3 text-sm font-medium text-emerald-600" data-testid="invoice-paid-provider">Paid by the client · 5% platform fee deducted from your payout</div>}
       {isProvider && inv.lines.length > 0 && (
         <Button onClick={send} disabled={sending} className="w-full mt-4" data-testid="send-invoice-btn">
           {sending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}

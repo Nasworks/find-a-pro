@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Briefcase, CalendarCheck, MessageSquare, User, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, History, Share2, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Heart, Clock } from 'lucide-react';
+import { Home, Briefcase, CalendarCheck, MessageSquare, User, Plus, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, DollarSign, Calendar, Users, Building2, FileText, Wrench, History, Share2, ShieldCheck, LinkIcon, Locate, MoreHorizontal, Home as HomeIcon2, KeyRound, Heart, Clock , Receipt, FolderKanban } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Logo from '../Logo';
 import { User as UserIcon, Wrench as WrenchIcon, Building2 as B2, Shield as ShieldIcon } from 'lucide-react';
@@ -34,6 +34,8 @@ const providerNav = [
     { to: '/provider/earnings', label: 'Earnings', icon: DollarSign },
     { to: '/provider/quotations', label: 'Quotations', icon: FileText },
     { to: '/provider/timesheet', label: 'Timesheet', icon: Clock },
+    { to: '/provider/projects', label: 'Active Projects', icon: FolderKanban },
+    { to: '/provider/receipts', label: 'Receipts', icon: Receipt },
     { to: '/messages', label: 'Messages', icon: MessageSquare },
   ]},
   { section: 'Team & Ops', items: [

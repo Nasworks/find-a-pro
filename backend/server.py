@@ -2353,7 +2353,8 @@ async def job_invoice(job_id: str, user=Depends(require_user)):
     # Customers see the last version the provider sent; providers see the live draft.
     if sent and user["user_id"] != provider_id:
         return {**sent, "is_sent_copy": True, "sent": _sent_meta(sent)}
-    return {**inv, "is_sent_copy": False, "sent": _sent_meta(sent) if sent else None}
+    return {**inv, "is_sent_copy": False, "sent": _sent_meta(sent) if sent else None,
+            "payment_status": (sent or {}).get("payment_status", "unpaid")}
 
 
 def _sent_meta(s: Dict[str, Any]) -> Dict[str, Any]:
@@ -2401,6 +2402,13 @@ async def _compute_invoice(job: Dict[str, Any], provider_id: Optional[str]) -> D
         lines.append({"kind": t, "description": f"{TYPE_LINE_LABEL.get(t, t.title())} — {worker}", "quantity": round(g["minutes"] / 60.0, 2), "unit": "hours", "rate": rate, "amount": round(g["amount"], 2)})
     if fuel_total:
         lines.append({"kind": "fuel", "description": f"Fuel / vehicle{f' ({round(fuel_km, 1)} km)' if fuel_km else ''}", "quantity": 1, "unit": "fixed", "rate": round(fuel_total, 2), "amount": round(fuel_total, 2)})
+    # Receipts the provider attached to this job (materials, hire, third-party…) — billed ex-GST, GST added below
+    for r in await db.receipts.find({"job_id": job_id, "provider_id": provider_id}, {"_id": 0}).sort("created_at", 1).to_list(200):
+        ex = round(r["total"] - r["gst"], 2) if r.get("gst") is not None else round(r["total"] / (1 + GST_RATE), 2)
+        name = {"materials": "Materials", "equipment_purchase": "Equipment purchase", "equipment_hire": "Equipment hire",
+                "third_party": "Third-party service", "travel": "Travel", "fuel": "Fuel"}.get(r["cost_type"], "Expense")
+        lines.append({"kind": f"receipt_{r['cost_type']}", "description": f"{name} — {r.get('supplier') or 'receipt'}", "quantity": 1,
+                      "unit": "receipt", "rate": ex, "amount": ex, "receipt_id": r["receipt_id"]})
     subtotal = round(sum(line["amount"] for line in lines), 2)
     gst = round(subtotal * GST_RATE, 2)
     return {
@@ -2441,6 +2449,8 @@ def _invoice_email_html(inv: Dict[str, Any], client_name: str, provider_name: st
 
 @api.post("/jobs/{job_id}/invoice/send")
 async def send_job_invoice(job_id: str, request: Request, user=Depends(require_user)):
+    if await db.payment_transactions.find_one({"job_id": job_id, "payment_status": "paid"}):
+        raise HTTPException(status_code=400, detail="This invoice has already been paid")
     job, provider_id = await _invoice_context(job_id, user)
     if user["user_id"] != provider_id:
         raise HTTPException(status_code=403, detail="Only the job's provider can send the invoice")
@@ -4054,6 +4064,325 @@ async def seed_data():
                     "created_at": now + timedelta(hours=j * 3 + 2),
                 })
 
+
+
+# ---------------- PAYMENTS (Stripe Checkout — cards, Google Pay, Apple Pay) ----------------
+from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
+import certifi as _certifi
+import stripe as _stripe_sdk
+_stripe_sdk.ca_bundle_path = _certifi.where()  # Stripe's bundled CA list doesn't cover the payments proxy
+
+PLATFORM_FEE_CLIENT = 0.05    # added to what the client pays
+PLATFORM_FEE_PROVIDER = 0.05  # deducted from the provider's payout
+STRIPE_PCT, STRIPE_FIXED = 0.027, 0.30  # NZ domestic card fee estimate, passed to the client
+
+
+def _fee_breakdown(invoice_total: float) -> Dict[str, float]:
+    base = round(float(invoice_total), 2)
+    client_fee = round(base * PLATFORM_FEE_CLIENT, 2)
+    # gross-up so the card fee on the final charge is covered by the client
+    charge = round((base + client_fee + STRIPE_FIXED) / (1 - STRIPE_PCT), 2)
+    card_fee = round(charge - base - client_fee, 2)
+    provider_fee = round(base * PLATFORM_FEE_PROVIDER, 2)
+    return {"invoice_total": base, "client_platform_fee": client_fee, "card_fee": card_fee, "total_charge": charge,
+            "provider_platform_fee": provider_fee, "provider_payout": round(base - provider_fee, 2),
+            "client_fee_rate": PLATFORM_FEE_CLIENT, "provider_fee_rate": PLATFORM_FEE_PROVIDER,
+            "card_fee_note": f"Stripe card processing ({STRIPE_PCT * 100:.1f}% + ${STRIPE_FIXED:.2f})"}
+
+
+async def _payable_invoice(job_id: str, user) -> Dict[str, Any]:
+    job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    payer = job.get("approver_id") if job.get("billing_target") == "approver" and job.get("approver_id") else job["client_id"]
+    if user["user_id"] not in (payer, job["client_id"]):
+        raise HTTPException(status_code=403, detail="Only the client can pay this invoice")
+    inv = await db.invoices.find_one({"job_id": job_id}, {"_id": 0})
+    if not inv or not inv.get("total"):
+        raise HTTPException(status_code=400, detail="The provider hasn't sent an invoice yet")
+    return {"job": job, "invoice": inv}
+
+
+def _stripe(request: Request) -> StripeCheckout:
+    return StripeCheckout(api_key=os.environ.get("STRIPE_API_KEY") or "sk_test_emergent",
+                          webhook_url=f"{str(request.base_url)}api/webhook/stripe")
+
+
+@api.get("/payments/invoice/{job_id}/quote")
+async def payment_quote(job_id: str, user=Depends(require_user)):
+    ctx = await _payable_invoice(job_id, user)
+    paid = await db.payment_transactions.find_one({"job_id": job_id, "payment_status": "paid"}, {"_id": 0, "session_id": 1})
+    return {**_fee_breakdown(ctx["invoice"]["total"]), "invoice_version": ctx["invoice"].get("version"), "paid": bool(paid)}
+
+
+class PayInvoiceIn(BaseModel):
+    origin_url: str
+
+
+@api.post("/payments/invoice/{job_id}/checkout")
+async def pay_invoice(job_id: str, payload: PayInvoiceIn, request: Request, user=Depends(require_user)):
+    ctx = await _payable_invoice(job_id, user)
+    if await db.payment_transactions.find_one({"job_id": job_id, "payment_status": "paid"}):
+        raise HTTPException(status_code=400, detail="This invoice is already paid")
+    origin = payload.origin_url.rstrip("/")
+    if not origin.startswith("http"):
+        raise HTTPException(status_code=400, detail="Invalid origin")
+    fees = _fee_breakdown(ctx["invoice"]["total"])
+    job = ctx["job"]
+    req = CheckoutSessionRequest(
+        amount=float(fees["total_charge"]), currency="nzd",
+        success_url=f"{origin}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{origin}/payment/cancel?job_id={job_id}",
+        metadata={"job_id": job_id, "user_id": user["user_id"], "invoice_version": str(ctx["invoice"].get("version") or "")},
+        payment_methods=["card"],  # Google Pay / Apple Pay appear automatically with cards when enabled in Stripe
+    )
+    session = await _stripe(request).create_checkout_session(req)
+    await db.payment_transactions.insert_one({
+        "session_id": session.session_id, "job_id": job_id, "user_id": user["user_id"],
+        "provider_id": job.get("assigned_provider_id"), "amount": fees["total_charge"], "currency": "nzd",
+        "fees": fees, "status": "initiated", "payment_status": "pending",
+        "created_at": datetime.now(timezone.utc), "updated_at": datetime.now(timezone.utc)})
+    return {"checkout_url": session.url, "session_id": session.session_id}
+
+
+async def _mark_paid(session_id: str):
+    tx = await db.payment_transactions.find_one_and_update(
+        {"session_id": session_id, "payment_status": {"$ne": "paid"}},
+        {"$set": {"status": "completed", "payment_status": "paid", "updated_at": datetime.now(timezone.utc)}})
+    if not tx:
+        return  # already processed
+    job_id = tx["job_id"]
+    now = datetime.now(timezone.utc)
+    await db.jobs.update_one({"job_id": job_id}, {"$set": {"status": "done", "payment_status": "paid", "paid_at": now}})
+    await db.invoices.update_one({"job_id": job_id}, {"$set": {"payment_status": "paid", "paid_at": now}})
+    await db.bookings.update_many({"job_id": job_id}, {"$set": {"status": "paid", "price": tx["fees"]["invoice_total"],
+                                                               "provider_payout": tx["fees"]["provider_payout"],
+                                                               "platform_fee": tx["fees"]["provider_platform_fee"]}})
+    job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0, "title": 1, "assigned_provider_id": 1})
+    pid = (job or {}).get("assigned_provider_id") or tx.get("provider_id")
+    if pid:
+        await notify(pid, "job_paid", f"Invoice paid · payout ${tx['fees']['provider_payout']:.2f}",
+                     f"{(job or {}).get('title', '')} (after 5% platform fee)", f"/jobs/{job_id}")
+
+
+@api.get("/payments/status/{session_id}")
+async def payment_status(session_id: str, request: Request):
+    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx["payment_status"] != "paid":
+        try:
+            st = await _stripe(request).get_checkout_status(session_id)
+            if st.payment_status == "paid":
+                await _mark_paid(session_id)
+                tx["payment_status"], tx["status"] = "paid", "completed"
+            elif st.status == "expired" and tx["status"] != "expired":
+                await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"status": "expired", "payment_status": "expired"}})
+                tx["payment_status"] = tx["status"] = "expired"
+        except Exception as e:
+            logging.warning(f"Stripe status check failed: {e}")
+    return {"session_id": session_id, "status": tx["status"], "payment_status": tx["payment_status"], "job_id": tx["job_id"]}
+
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    body = await request.body()
+    try:
+        ev = await _stripe(request).handle_webhook(body, request.headers.get("Stripe-Signature"))
+    except Exception as e:
+        logging.warning(f"Stripe webhook rejected: {e}")
+        raise HTTPException(status_code=400, detail="Invalid webhook")
+    if ev.session_id and ev.payment_status == "paid":
+        await _mark_paid(ev.session_id)
+    return {"ok": True}
+
+
+@api.get("/payments/history")
+async def payment_history(user=Depends(require_user)):
+    """Completed jobs with paid / unpaid state for clients and providers."""
+    q = {"status": "done", "$or": [{"client_id": user["user_id"]}, {"assigned_provider_id": user["user_id"]}, {"approver_id": user["user_id"]}]}
+    jobs = await db.jobs.find(q, {"_id": 0, "job_id": 1, "title": 1, "client_id": 1, "assigned_provider_id": 1, "payment_status": 1,
+                                  "paid_at": 1, "created_at": 1, "location": 1}).sort("created_at", -1).to_list(300)
+    invs = {i["job_id"]: i for i in await db.invoices.find({"job_id": {"$in": [j["job_id"] for j in jobs]}}, {"_id": 0, "job_id": 1, "total": 1}).to_list(None)}
+    for j in jobs:
+        j["invoice_total"] = (invs.get(j["job_id"]) or {}).get("total")
+        j["payment_status"] = j.get("payment_status") or "unpaid"
+        if j["invoice_total"]:
+            j["fees"] = _fee_breakdown(j["invoice_total"])
+    return jobs
+
+
+# ---------------- RECEIPT SCANNER (Gemini vision) ----------------
+RECEIPT_COST_TYPES = ("materials", "equipment_purchase", "equipment_hire", "third_party", "travel", "fuel", "other")
+RECEIPT_MODEL = ("gemini", "gemini-3.8-flash")
+
+
+class ReceiptScanIn(BaseModel):
+    file_url: str
+
+
+class ReceiptIn(BaseModel):
+    file_url: Optional[str] = None
+    cost_type: str
+    supplier: Optional[str] = None
+    date: Optional[str] = None
+    total: float
+    gst: Optional[float] = None
+    items: List[Dict[str, Any]] = []
+    notes: Optional[str] = None
+    job_id: Optional[str] = None
+
+
+async def _own_file(file_url: str, user) -> Dict[str, Any]:
+    if not (file_url or "").startswith("/api/files/"):
+        raise HTTPException(status_code=400, detail="Upload the receipt photo first")
+    rec = await db.files.find_one({"file_id": file_url.split("/")[3], "is_deleted": False}, {"_id": 0})
+    if not rec or rec.get("owner_id") != user["user_id"]:
+        raise HTTPException(status_code=404, detail="File not found")
+    return rec
+
+
+@api.post("/receipts/scan")
+async def scan_receipt(payload: ReceiptScanIn, user=Depends(require_user)):
+    """AI reads supplier, date, totals and line items. The provider reviews before saving."""
+    import asyncio, base64, json, re
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent, TextDelta, StreamDone
+    await _require_provider(user)
+    rec = await _own_file(payload.file_url, user)
+    if not (rec.get("content_type") or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="Scanning works with photos (JPG/PNG/WEBP) — enter PDF receipts manually")
+    data, _ = await asyncio.to_thread(get_object, rec["storage_path"])
+    chat = LlmChat(api_key=os.environ.get("EMERGENT_LLM_KEY", ""), session_id=f"receipt_{uuid.uuid4().hex[:8]}",
+                   system_message="You extract data from New Zealand purchase receipts and reply with JSON only.").with_model(*RECEIPT_MODEL)
+    prompt = ('Read this receipt. Reply ONLY with JSON: {"supplier": str|null, "date": "YYYY-MM-DD"|null, "total": number|null, '
+              '"gst": number|null, "items": [{"description": str, "amount": number}], '
+              '"suggested_cost_type": one of ["materials","equipment_purchase","equipment_hire","third_party","travel","fuel","other"], '
+              '"is_receipt": bool}. Amounts in NZD as numbers. If it is not a receipt set is_receipt false.')
+    text = ""
+    try:
+        async for ev in chat.stream_message(UserMessage(text=prompt, file_contents=[ImageContent(image_base64=base64.b64encode(data).decode())])):
+            if isinstance(ev, TextDelta):
+                text += ev.content
+            elif isinstance(ev, StreamDone):
+                break
+    except Exception as e:
+        logging.error(f"Receipt scan failed: {e}")
+        raise HTTPException(status_code=502, detail="Couldn't read the receipt right now — enter the details manually")
+    m = re.search(r"\{.*\}", text, re.S)
+    try:
+        out = json.loads(m.group(0)) if m else {}
+    except ValueError:
+        out = {}
+    if out.get("suggested_cost_type") not in RECEIPT_COST_TYPES:
+        out["suggested_cost_type"] = "materials"
+    out["items"] = [i for i in (out.get("items") or []) if isinstance(i, dict)][:30]
+    return out
+
+
+@api.post("/receipts")
+async def save_receipt(payload: ReceiptIn, user=Depends(require_user)):
+    await _require_provider(user)
+    if payload.cost_type not in RECEIPT_COST_TYPES:
+        raise HTTPException(status_code=400, detail="Choose a cost type")
+    if not (0 < payload.total <= 1_000_000):
+        raise HTTPException(status_code=400, detail="Total must be a positive amount")
+    if payload.file_url:
+        await _own_file(payload.file_url, user)
+    job_title = None
+    if payload.job_id:
+        job = await db.jobs.find_one({"job_id": payload.job_id, "assigned_provider_id": user["user_id"]}, {"_id": 0, "title": 1})
+        if not job:
+            raise HTTPException(status_code=400, detail="You can only attach receipts to jobs assigned to you")
+        job_title = job["title"]
+    doc = {"receipt_id": f"rcpt_{uuid.uuid4().hex[:10]}", "provider_id": user["user_id"], "uploaded_by": user["user_id"],
+           **payload.dict(), "job_title": job_title, "created_at": datetime.now(timezone.utc)}
+    doc["items"] = doc["items"][:30]
+    await db.receipts.insert_one(dict(doc))
+    doc.pop("_id", None)
+    return doc
+
+
+@api.get("/receipts")
+async def list_receipts(job_id: Optional[str] = None, user=Depends(require_user)):
+    await _require_provider(user)
+    q: Dict[str, Any] = {"provider_id": user["user_id"]}
+    if job_id:
+        q["job_id"] = job_id
+    items = await db.receipts.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+    totals: Dict[str, float] = {}
+    for r in items:
+        totals[r["cost_type"]] = round(totals.get(r["cost_type"], 0) + r["total"], 2)
+    return {"receipts": items, "totals": totals, "grand_total": round(sum(totals.values()), 2)}
+
+
+@api.delete("/receipts/{receipt_id}")
+async def delete_receipt(receipt_id: str, user=Depends(require_user)):
+    r = await db.receipts.delete_one({"receipt_id": receipt_id, "provider_id": user["user_id"]})
+    if not r.deleted_count:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    return {"ok": True}
+
+
+# ---------------- ACTIVE JOB PROJECT TIMELINE ----------------
+DEFAULT_STAGES = ["Job booked", "Site visit & scoping", "Materials ordered", "Work underway", "Final checks", "Completed"]
+
+
+class TimelineUpdateIn(BaseModel):
+    stage_index: Optional[int] = None
+    message: Optional[str] = None
+    photos: List[str] = []
+    notify_client: bool = True
+
+
+async def _timeline_job(job_id: str, user) -> tuple:
+    job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    is_pro = user["user_id"] == job.get("assigned_provider_id")
+    if not (is_pro or user["user_id"] in (job.get("client_id"), job.get("approver_id"))):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    return job, is_pro
+
+
+@api.get("/jobs/{job_id}/timeline")
+async def get_timeline(job_id: str, user=Depends(require_user)):
+    job, is_pro = await _timeline_job(job_id, user)
+    updates = await db.job_updates.find({"job_id": job_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"stages": job.get("timeline_stages") or DEFAULT_STAGES, "current_stage": job.get("current_stage", 0),
+            "updates": updates, "can_edit": is_pro and job.get("status") in ("assigned", "in_progress"), "status": job.get("status")}
+
+
+@api.post("/jobs/{job_id}/timeline")
+async def post_timeline_update(job_id: str, payload: TimelineUpdateIn, user=Depends(require_user)):
+    job, is_pro = await _timeline_job(job_id, user)
+    if not is_pro:
+        raise HTTPException(status_code=403, detail="Only the assigned provider can post project updates")
+    if job.get("status") not in ("assigned", "in_progress"):
+        raise HTTPException(status_code=400, detail="Updates can only be posted on active jobs")
+    stages = job.get("timeline_stages") or DEFAULT_STAGES
+    msg = (payload.message or "").strip()[:2000]
+    photos = [p for p in payload.photos if isinstance(p, str) and p.startswith("/api/files/")][:10]
+    upd: Dict[str, Any] = {}
+    stage = job.get("current_stage", 0)
+    if payload.stage_index is not None:
+        if not (0 <= payload.stage_index < len(stages)):
+            raise HTTPException(status_code=400, detail="Unknown stage")
+        stage = payload.stage_index
+        upd["current_stage"] = stage
+        if job.get("status") == "assigned" and stage > 0:
+            upd["status"] = "in_progress"
+    if not msg and not photos and "current_stage" not in upd:
+        raise HTTPException(status_code=400, detail="Add a message, photo or stage change")
+    if upd:
+        await db.jobs.update_one({"job_id": job_id}, {"$set": upd})
+    doc = {"update_id": f"upd_{uuid.uuid4().hex[:10]}", "job_id": job_id, "author_id": user["user_id"], "author_name": user.get("name"),
+           "stage_index": stage, "stage": stages[stage], "stage_changed": "current_stage" in upd, "message": msg or None,
+           "photos": photos, "sent_to_client": payload.notify_client, "created_at": datetime.now(timezone.utc)}
+    await db.job_updates.insert_one(dict(doc))
+    if payload.notify_client:
+        target = job.get("approver_id") if job.get("billing_target") == "approver" and job.get("approver_id") else job["client_id"]
+        await notify(target, "job_update", f"Update on {job.get('title')}: {stages[stage]}", msg[:120], f"/jobs/{job_id}")
+    return doc
 
 
 # ---------------- PROVIDER SPECIALIZATIONS + MATCHING ENGINE ----------------

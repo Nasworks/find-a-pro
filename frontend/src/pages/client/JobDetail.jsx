@@ -11,6 +11,7 @@ import { Checkbox } from '../../components/ui/checkbox';
 import api from '../../lib/api';
 import { JobInvoice } from '../../components/JobInvoice';
 import JobMatchesPanel from '../../components/JobMatchesPanel';
+import ProjectTimeline from '../../components/ProjectTimeline';
 import { SIZE_META, priceLine } from '../../components/MatchedJobsFeed';
 import { MediaThumb, mediaSrc, isVideo } from '../../components/MediaUploader';
 import { useAuth } from '../../context/AuthContext';
@@ -80,7 +81,7 @@ export default function JobDetail() {
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 capitalize">{job.status === 'done' ? 'completed' : job.status.replace('_', ' ')}</Badge>
+              <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 capitalize">{job.status === 'done' ? 'completed' : job.status.replace('_', ' ')}{job.status === 'done' ? (job.payment_status === 'paid' ? ' · paid' : ' · unpaid') : ''}</Badge>
               <span className="text-xs text-muted-foreground">Posted {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}</span>
             </div>
             <h1 className="text-2xl font-bold text-foreground mt-2">{job.title}</h1>
@@ -103,6 +104,13 @@ export default function JobDetail() {
         </div>
         <p className="mt-4 text-foreground/90 whitespace-pre-wrap">{job.description}</p>
       </div>
+
+      {(canSeeMatches || user?.user_id === job.assigned_provider_id) && ['assigned', 'in_progress', 'done'].includes(job.status) && job.assigned_provider_id && (
+        <div className="mt-6 bg-card border border-border rounded-2xl p-5" data-testid="job-progress-section">
+          <div className="font-semibold text-foreground mb-3">Project progress</div>
+          <ProjectTimeline jobId={job.job_id} onChanged={load} />
+        </div>
+      )}
 
       {canSeeMatches && job.approval_status !== 'pending' && (
         <div className="mt-6"><JobMatchesPanel job={job} onAwarded={load} /></div>
